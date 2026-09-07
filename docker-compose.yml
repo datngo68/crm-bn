@@ -14,7 +14,10 @@ services:
     restart: unless-stopped
     networks:
       - docker_default
+      - supabase_default
 
 networks:
   docker_default:
+    external: true
+  supabase_default:
     external: true
