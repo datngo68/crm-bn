@@ -1,6 +1,7 @@
 import { createServerClient } from "@supabase/ssr";
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import { cookies } from "next/headers";
+import { AUTH_COOKIE_NAME } from "@/lib/supabase/auth-cookie";
 
 /** Server/middleware: prefer Docker-internal URL (avoids Cloudflare hairpin ~300ms) */
 function supabaseUrl() {
@@ -16,6 +17,7 @@ export async function createClient() {
     supabaseUrl(),
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
+      cookieOptions: { name: AUTH_COOKIE_NAME },
       cookies: {
         getAll() {
           return cookieStore.getAll();
