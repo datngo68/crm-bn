@@ -39,20 +39,22 @@ export function DashboardClient({
   const { message } = App.useApp();
   const [items, setItems] = useState(focus);
   const [prevFocus, setPrevFocus] = useState(focus);
+  const [fuCounts, setFuCounts] = useState({ overdue, dueToday });
   if (focus !== prevFocus) {
     setPrevFocus(focus);
     setItems(focus);
+    setFuCounts({ overdue, dueToday });
   }
 
   const stats = [
     { label: "Pending", value: pending, hint: "Đang theo dõi" },
     {
       label: "Quá hạn",
-      value: overdue,
+      value: fuCounts.overdue,
       hint: "Cần follow-up",
-      danger: overdue > 0,
+      danger: fuCounts.overdue > 0,
     },
-    { label: "Hôm nay", value: dueToday, hint: today },
+    { label: "Hôm nay", value: fuCounts.dueToday, hint: today },
     { label: "Ordered / tháng", value: orderedMonth, hint: "Đã chốt" },
   ];
 
@@ -60,21 +62,31 @@ export function DashboardClient({
     const prev = {
       last_follow_up_date: row.last_follow_up_date,
       next_follow_up_date: row.next_follow_up_date,
+      updated_at: row.updated_at,
     };
+    let delta = { overdue: 0, dueToday: 0 };
     await markDaFu({
       id: row.id,
       prev,
       today,
       defaultFollowUpDays,
       message,
-      onOptimisticApply: () =>
-        setItems((list) => list.filter((i) => i.id !== row.id)),
-      onRevert: () =>
+      onOptimisticApply: (patch) => {
+        delta = {
+          overdue: Number(isOverdue(patch.next_follow_up_date, today)) - Number(isOverdue(prev.next_follow_up_date, today)),
+          dueToday: Number(patch.next_follow_up_date === today) - Number(prev.next_follow_up_date === today),
+        };
+        setFuCounts((counts) => ({ overdue: counts.overdue + delta.overdue, dueToday: counts.dueToday + delta.dueToday }));
+        setItems((list) => list.filter((i) => i.id !== row.id));
+      },
+      onRevert: (updatedAt) => {
+        setFuCounts((counts) => ({ overdue: counts.overdue - delta.overdue, dueToday: counts.dueToday - delta.dueToday }));
         setItems((list) =>
-          [...list.filter((i) => i.id !== row.id), row].sort((a, b) =>
+          [...list.filter((i) => i.id !== row.id), { ...row, updated_at: updatedAt ?? row.updated_at }].sort((a, b) =>
             (a.next_follow_up_date ?? "").localeCompare(b.next_follow_up_date ?? ""),
           ),
-        ),
+        );
+      },
     });
   }
 

@@ -25,7 +25,7 @@ export default async function DashboardPage() {
     base().eq("status", "Ordered").gte("updated_at", monthStart),
     supabase
       .from("inquiries")
-      .select("id, item_name, status, next_follow_up_date, last_follow_up_date, estimated_amount, vendors(id, name)")
+      .select("id, item_name, status, next_follow_up_date, last_follow_up_date, updated_at, estimated_amount, vendors(id, name)")
       .is("archived_at", null)
       .eq("status", "Pending")
       .lte("next_follow_up_date", today)
