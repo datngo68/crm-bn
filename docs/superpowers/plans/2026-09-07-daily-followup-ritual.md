@@ -26,6 +26,7 @@
 |------|----------------|
 | Create `src/lib/follow-up.ts` | Pure: due/overdue checks, Đã FU patch + undo payload, toast date label |
 | Create `src/lib/follow-up-check.ts` | Runnable asserts for helpers |
+| Create `src/lib/mark-da-fu.ts` (Task 3) | Shared client helper: optimistic patch + Undo toast (Dashboard + List) |
 | Modify `src/app/page.tsx` | Fetch focus rows (no tiny limit), pass `defaultFollowUpDays` + richer fields |
 | Modify `src/components/dashboard-client.tsx` | “Hôm nay” inbox, Đã FU + Undo, KPI links, Sửa → detail |
 | Modify `src/components/inquiry-list-client.tsx` | Init filters from URL; Đã FU on due/overdue Pending rows + drawer |
