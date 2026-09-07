@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { useCallback, useMemo, useState } from "react";
 import {
   App,
@@ -93,10 +94,23 @@ export function InquiryListClient({
     setVendors(initialVendors);
   }
 
-  const [q, setQ] = useState("");
-  const [status, setStatus] = useState<string | undefined>();
-  const [vendorId, setVendorId] = useState<string | undefined>();
-  const [focus, setFocus] = useState<string | undefined>();
+  const searchParams = useSearchParams();
+  const urlFilters = searchParams.toString();
+  const urlStatus = STATUSES.find((s) => s === searchParams.get("status"));
+  const urlFocus = ["due", "overdue"].find((f) => f === searchParams.get("focus"));
+  const [q, setQ] = useState(searchParams.get("q") ?? "");
+  const [status, setStatus] = useState<string | undefined>(urlStatus);
+  const [vendorId, setVendorId] = useState<string | undefined>(searchParams.get("vendor") || undefined);
+  const [focus, setFocus] = useState<string | undefined>(urlFocus);
+  const [prevUrlFilters, setPrevUrlFilters] = useState(urlFilters);
+  // ponytail: URL → local filters only; add URL writes when shareable edits are needed.
+  if (urlFilters !== prevUrlFilters) {
+    setPrevUrlFilters(urlFilters);
+    setQ(searchParams.get("q") ?? "");
+    setStatus(urlStatus);
+    setVendorId(searchParams.get("vendor") || undefined);
+    setFocus(urlFocus);
+  }
   const [sort, setSort] = useState<"newest" | "oldest">("newest");
 
   const [editRow, setEditRow] = useState<Inquiry | null>(null);
