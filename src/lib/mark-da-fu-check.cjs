@@ -57,6 +57,9 @@ async function check(results, { undo = true, expectWrites = 2, conflict = false 
   let applied = 0;
   let reverted = 0;
   let restoredAt;
+  let savedAt;
+  let undoAllowed = false;
+  let undoEnded = 0;
   let toast;
   const { markDaFu } = load("mark-da-fu.ts", {
     react: { createElement: (type, props, ...children) => ({ type, props, children }) },
@@ -88,6 +91,9 @@ async function check(results, { undo = true, expectWrites = 2, conflict = false 
       reverted++;
       restoredAt = updatedAt;
     },
+    onSaved: (updatedAt) => { savedAt = updatedAt; },
+    onUndoStart: () => undoAllowed,
+    onUndoEnd: () => { undoEnded++; },
   });
   assert.equal(applied, 1, "optimistic callback is synchronous");
   const success = await promise;
@@ -106,9 +112,14 @@ async function check(results, { undo = true, expectWrites = 2, conflict = false 
   assert.equal(toast.duration, 5);
   assert.equal(toast.key, "dafu-test-id");
   assert.equal(toast.content.children[0], "Next FU = 10/09/2026 ");
+  assert.equal(savedAt, "v1", "save publishes current row version");
   const click = toast.content.children[1].props.onClick;
   await click();
+  assert.equal(writes.length, 1, "busy inquiry blocks Undo without consuming it");
+  undoAllowed = true;
   await click();
+  await click();
+  assert.equal(undoEnded, 1, "Undo releases its lock on success or failure");
   assert.equal(writes.length, expectWrites, "write count matches scenario");
   if (expectWrites > 1) {
     assert.deepEqual(writes[1].dates, {

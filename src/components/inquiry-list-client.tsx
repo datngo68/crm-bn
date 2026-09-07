@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { useCallback, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   App,
   Button,
@@ -32,6 +32,7 @@ import { NOMINATED_STATUSES, STATUSES } from "@/lib/types";
 import { addDaysISO, formatUsd, todayISO } from "@/lib/utils";
 import { PageHeader } from "@/components/page-header";
 import { statusTagColor } from "@/lib/theme";
+import { markDaFu } from "@/lib/mark-da-fu";
 
 type Props = {
   inquiries: Inquiry[];
@@ -172,21 +173,94 @@ export function InquiryListClient({
     setFocus(undefined);
   }
 
-  const patch = useCallback(
-    async (id: string, data: Partial<QuickEdit>) => {
-      setSaving(true);
-      const supabase = createClient();
-      const { error } = await supabase.from("inquiries").update(data).eq("id", id);
-      setSaving(false);
-      if (error) {
-        message.error(error.message);
-        return false;
-      }
-      setRows((prev) => prev.map((r) => (r.id === id ? { ...r, ...data } : r)));
+  const activeIds = useRef(new Set<string>());
+  const [busyIds, setBusyIds] = useState<Set<string>>(new Set());
+  const latestRows = useRef(rows);
+  useEffect(() => { latestRows.current = rows; }, [rows]);
+
+  // Sync the persisted date baseline only; never reset other unsaved fields.
+  const drawerDate = useRef<string | null>(null);
+  const currentEditRow = rows.find((r) => r.id === editRow?.id);
+  useEffect(() => {
+    if (!currentEditRow) return;
+    if (editForm.getFieldValue("next_follow_up_date") === drawerDate.current) {
+      editForm.setFieldValue("next_follow_up_date", currentEditRow.next_follow_up_date);
+    }
+    drawerDate.current = currentEditRow.next_follow_up_date;
+  }, [currentEditRow, editForm]);
+
+  function lock(id: string) {
+    if (activeIds.current.has(id)) return false;
+    activeIds.current.add(id);
+    setBusyIds(new Set(activeIds.current));
+    return true;
+  }
+
+  function unlock(id: string) {
+    activeIds.current.delete(id);
+    setBusyIds(new Set(activeIds.current));
+  }
+
+  function updateRow(id: string, data: Partial<Inquiry>) {
+    latestRows.current = latestRows.current.map((r) => r.id === id ? { ...r, ...data } : r);
+    setRows(latestRows.current);
+  }
+
+  async function patch(id: string, data: Partial<QuickEdit>, locked = false) {
+    if (!locked && !lock(id)) return false;
+    try {
+      const row = latestRows.current.find((r) => r.id === id);
+      if (!row?.updated_at) throw new Error("Vui lòng tải lại inquiry.");
+      const { data: saved, error } = await createClient().from("inquiries")
+        .update(data).eq("id", id).eq("updated_at", row.updated_at)
+        .select("updated_at").single();
+      if (error) throw error;
+      if (!saved?.updated_at) throw new Error("Inquiry đã thay đổi. Vui lòng tải lại trang.");
+      updateRow(id, { ...data, updated_at: saved.updated_at });
+      message.destroy(`dafu-${id}`);
       return true;
-    },
-    [message],
-  );
+    } catch (error) {
+      message.error(error && typeof error === "object" && "message" in error
+        ? String(error.message) : "Không thể lưu inquiry. Vui lòng thử lại.");
+      return false;
+    } finally {
+      if (!locked) unlock(id);
+    }
+  }
+
+  function canDaFu(row: Inquiry) {
+    return row.status === "Pending" && !!row.next_follow_up_date && row.next_follow_up_date <= today;
+  }
+
+  async function handleDaFu(id: string) {
+    const row = latestRows.current.find((r) => r.id === id);
+    if (!row || !canDaFu(row) || !lock(id)) return;
+    const prev = {
+      last_follow_up_date: row.last_follow_up_date,
+      next_follow_up_date: row.next_follow_up_date,
+      updated_at: row.updated_at,
+    };
+    try {
+      await markDaFu({
+        id, prev, today, defaultFollowUpDays, message,
+        onOptimisticApply: (dates) => updateRow(id, dates),
+        onSaved: (updated_at) => updateRow(id, { updated_at }),
+        onRevert: (updatedAt) => updateRow(id, { ...prev, updated_at: updatedAt ?? prev.updated_at }),
+        onUndoStart: () => lock(id),
+        onUndoEnd: () => unlock(id),
+      });
+    } finally {
+      unlock(id);
+    }
+  }
+
+  function daFuButton(row: Inquiry) {
+    return canDaFu(row) ? (
+      <Button size="small" disabled={busyIds.has(row.id)} onClick={() => void handleDaFu(row.id)}>
+        Đã FU
+      </Button>
+    ) : null;
+  }
 
   function openCreate() {
     setCreating(true);
@@ -208,6 +282,7 @@ export function InquiryListClient({
   }
 
   function openEdit(row: Inquiry) {
+    drawerDate.current = row.next_follow_up_date;
     setEditRow(row);
     editForm.setFieldsValue({
       status: row.status,
@@ -295,7 +370,7 @@ export function InquiryListClient({
   }
 
   async function saveEdit() {
-    if (!editRow) return;
+    if (!editRow || !lock(editRow.id)) return;
     try {
       const values = await editForm.validateFields();
       const ok = await patch(editRow.id, {
@@ -310,13 +385,15 @@ export function InquiryListClient({
           values.status === "No Order"
             ? values.reason_no_order || null
             : null,
-      });
+      }, true);
       if (ok) {
         message.success("Đã lưu");
-        setEditRow(null);
+        setEditRow((current) => current?.id === editRow.id ? null : current);
       }
     } catch {
       /* validation */
+    } finally {
+      unlock(editRow.id);
     }
   }
 
@@ -434,7 +511,7 @@ export function InquiryListClient({
         dataIndex: "item_name" as const,
         editable: true,
         inputType: "text" as const,
-        saving,
+        saving: saving || busyIds.has(r.id),
         onSave: (v: string) => patch(r.id, { item_name: v }),
       }),
     },
@@ -448,7 +525,7 @@ export function InquiryListClient({
         dataIndex: "brand" as const,
         editable: true,
         inputType: "text" as const,
-        saving,
+        saving: saving || busyIds.has(r.id),
         onSave: (v: string) => patch(r.id, { brand: v || null }),
       }),
       render: (v: string | null) => v || "-",
@@ -463,7 +540,7 @@ export function InquiryListClient({
         dataIndex: "item_code" as const,
         editable: true,
         inputType: "text" as const,
-        saving,
+        saving: saving || busyIds.has(r.id),
         onSave: (v: string) => patch(r.id, { item_code: v || null }),
       }),
       render: (v: string | null) => v || "-",
@@ -477,7 +554,7 @@ export function InquiryListClient({
         dataIndex: "status" as const,
         editable: true,
         inputType: "status" as const,
-        saving,
+        saving: saving || busyIds.has(r.id),
         onSave: (v: InquiryStatus) => patch(r.id, { status: v }),
       }),
       render: (s: InquiryStatus) => <Tag color={statusTagColor[s]}>{s}</Tag>,
@@ -497,7 +574,7 @@ export function InquiryListClient({
         dataIndex: "next_follow_up_date" as const,
         editable: true,
         inputType: "date" as const,
-        saving,
+        saving: saving || busyIds.has(r.id),
         onSave: (v: string | null) => patch(r.id, { next_follow_up_date: v }),
       }),
       render: (v: string | null) => v ?? "-",
@@ -512,7 +589,7 @@ export function InquiryListClient({
         dataIndex: "estimated_amount" as const,
         editable: true,
         inputType: "number" as const,
-        saving,
+        saving: saving || busyIds.has(r.id),
         onSave: (v: number | null) => patch(r.id, { estimated_amount: v }),
       }),
       render: (v: number | null) => (
@@ -528,19 +605,22 @@ export function InquiryListClient({
         dataIndex: "owner" as const,
         editable: true,
         inputType: "text" as const,
-        saving,
+        saving: saving || busyIds.has(r.id),
         onSave: (v: string) => patch(r.id, { owner: v || null }),
       }),
       render: (v: string | null) => v || "-",
     },
     {
       title: "",
-      width: 48,
+      width: 120,
       fixed: "right" as const,
       render: (_: unknown, r: Inquiry) => (
-        <Link href={`/inquiries/${r.id}`} aria-label="Chi tiết">
-          <Button type="text" size="small" icon={<EditOutlined />} />
-        </Link>
+        <Space size={4} onClick={(e) => e.stopPropagation()}>
+          {daFuButton(r)}
+          <Link href={`/inquiries/${r.id}`} aria-label="Chi tiết">
+            <Button type="text" size="small" icon={<EditOutlined />} />
+          </Link>
+        </Space>
       ),
     },
   ] as ColumnsType<Inquiry>;
@@ -685,7 +765,8 @@ export function InquiryListClient({
               </Button>
             </Link>
           )}
-          <Button type="primary" loading={saving} onClick={saveEdit}>
+          {currentEditRow && daFuButton(currentEditRow)}
+          <Button type="primary" loading={saving || (!!editRow && busyIds.has(editRow.id))} onClick={saveEdit}>
             Lưu
           </Button>
         </Space>
@@ -748,7 +829,7 @@ export function InquiryListClient({
         title="Inquiries"
         description={
           isMobile
-            ? `${filtered.length} / ${rows.length} · chạm để sửa`
+            ? `${filtered.length} / ${rows.length} · chọn Sửa để chỉnh sửa`
             : `${filtered.length} / ${rows.length} · click ô để sửa như Excel`
         }
         extra={
@@ -794,10 +875,8 @@ export function InquiryListClient({
       ) : isMobile ? (
         <Space orientation="vertical" size={8} style={{ width: "100%" }}>
           {filtered.map((r) => (
-            <button
+            <div
               key={r.id}
-              type="button"
-              onClick={() => openEdit(r)}
               style={{
                 display: "block",
                 width: "100%",
@@ -806,7 +885,6 @@ export function InquiryListClient({
                 background: "#fff",
                 border: "1px solid #E2E8F0",
                 borderRadius: 10,
-                cursor: "pointer",
               }}
             >
               <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
@@ -832,7 +910,11 @@ export function InquiryListClient({
                   Reason: {r.reason_no_order}
                 </Typography.Text>
               ) : null}
-            </button>
+              <Space style={{ display: "flex", marginTop: 8 }}>
+                {daFuButton(r)}
+                <Button size="small" onClick={() => openEdit(r)}>Sửa</Button>
+              </Space>
+            </div>
           ))}
         </Space>
       ) : (

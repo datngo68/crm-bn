@@ -21,6 +21,9 @@ type MarkDaFuArgs = {
   onOptimisticApply: (patch: FuDateSnapshot) => void;
   /** Restore UI after failure; successful Undo supplies the new row version. */
   onRevert: (updatedAt?: string) => void;
+  onSaved?: (updatedAt: string) => void;
+  onUndoStart?: () => boolean;
+  onUndoEnd?: () => void;
 };
 
 /** One-tap Đã FU + Undo toast (5s). Shared by Dashboard and Inquiry list. */
@@ -32,6 +35,9 @@ export async function markDaFu({
   message,
   onOptimisticApply,
   onRevert,
+  onSaved,
+  onUndoStart,
+  onUndoEnd,
 }: MarkDaFuArgs): Promise<boolean> {
   const patch = daFuPatch(today, defaultFollowUpDays);
   onOptimisticApply(patch);
@@ -63,6 +69,7 @@ export async function markDaFu({
     return false;
   }
 
+  onSaved?.(savedVersion);
   let undone = false;
   const key = `dafu-${id}`;
   message.open({
@@ -78,7 +85,7 @@ export async function markDaFu({
           type: "link",
           size: "small",
           onClick: async () => {
-            if (undone) return;
+            if (undone || onUndoStart?.() === false) return;
             undone = true;
             message.destroy(key);
             const restoredVersion = await save({
@@ -86,6 +93,7 @@ export async function markDaFu({
               next_follow_up_date: prev.next_follow_up_date,
             }, savedVersion);
             if (restoredVersion) onRevert(restoredVersion);
+            onUndoEnd?.();
           },
         },
         "Undo",
