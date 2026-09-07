@@ -1,0 +1,12 @@
+node_modules
+.next
+.git
+.env
+.env.*
+!.env.example
+build-err.txt
+build-out.txt
+.cursor
+.agents
+*.md
+!README.md
