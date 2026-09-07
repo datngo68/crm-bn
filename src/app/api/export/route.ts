@@ -22,6 +22,7 @@ export async function GET(req: Request) {
   let query = supabase
     .from("inquiries")
     .select("*, vendors(id, name)")
+    .is("archived_at", null)
     .order("received_date", { ascending: false });
 
   if (status) query = query.eq("status", status);

@@ -73,7 +73,15 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       items={NAV.map((item) => ({
         key: item.key,
         icon: item.icon,
-        label: <Link href={item.href}>{item.label}</Link>,
+        label: (
+          <Link
+            href={item.href}
+            prefetch
+            onMouseEnter={() => router.prefetch(item.href)}
+          >
+            {item.label}
+          </Link>
+        ),
       }))}
     />
   );

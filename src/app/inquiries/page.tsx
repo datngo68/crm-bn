@@ -23,6 +23,10 @@ export default async function InquiriesPage({ searchParams }: Props) {
     .select("*, vendors(id, name)")
     .order("created_at", { ascending: false });
 
+  // Default: hide archived. ?archived=1 shows only archived.
+  if (sp.archived === "1") query = query.not("archived_at", "is", null);
+  else query = query.is("archived_at", null);
+
   if (sp.status) query = query.eq("status", sp.status);
   if (sp.vendor) query = query.eq("vendor_id", sp.vendor);
   if (sp.owner) query = query.ilike("owner", `%${sp.owner}%`);

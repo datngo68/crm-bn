@@ -23,7 +23,9 @@ import type { ColumnsType } from "antd/es/table";
 import {
   DownloadOutlined,
   EditOutlined,
+  EyeInvisibleOutlined,
   PlusOutlined,
+  UndoOutlined,
 } from "@ant-design/icons";
 import dayjs from "dayjs";
 import { createClient } from "@/lib/supabase/client";
@@ -76,9 +78,10 @@ export function InquiryListClient({
 }: Props) {
   const router = useRouter();
   const sp = useSearchParams();
-  const { message } = App.useApp();
+  const { message, modal } = App.useApp();
   const screens = useBreakpoint();
   const isMobile = !screens.md;
+  const showArchived = sp.get("archived") === "1";
 
   const [rows, setRows] = useState(initial);
   const [vendors, setVendors] = useState(initialVendors);
@@ -253,6 +256,49 @@ export function InquiryListClient({
     }
   }
 
+  function archiveRow(row: Inquiry) {
+    modal.confirm({
+      title: "Ẩn inquiry này?",
+      content: `${row.vendors?.name ?? ""} · ${row.item_name}. Có thể khôi phục trong mục Đã ẩn.`,
+      okText: "Ẩn",
+      okButtonProps: { danger: true },
+      cancelText: "Hủy",
+      onOk: async () => {
+        setSaving(true);
+        const supabase = createClient();
+        const { error } = await supabase
+          .from("inquiries")
+          .update({ archived_at: new Date().toISOString() })
+          .eq("id", row.id);
+        setSaving(false);
+        if (error) {
+          message.error(error.message);
+          return;
+        }
+        setRows((prev) => prev.filter((r) => r.id !== row.id));
+        setEditRow(null);
+        message.success("Đã ẩn");
+      },
+    });
+  }
+
+  async function restoreRow(row: Inquiry) {
+    setSaving(true);
+    const supabase = createClient();
+    const { error } = await supabase
+      .from("inquiries")
+      .update({ archived_at: null })
+      .eq("id", row.id);
+    setSaving(false);
+    if (error) {
+      message.error(error.message);
+      return;
+    }
+    setRows((prev) => prev.filter((r) => r.id !== row.id));
+    setEditRow(null);
+    message.success("Đã khôi phục");
+  }
+
   const vendorMap = useMemo(
     () => Object.fromEntries(vendors.map((v) => [v.id, v.name])),
     [vendors],
@@ -322,6 +368,17 @@ export function InquiryListClient({
           Xóa lọc
         </Button>
       )}
+      <Button
+        type="link"
+        onClick={() => {
+          const next = new URLSearchParams(sp.toString());
+          if (showArchived) next.delete("archived");
+          else next.set("archived", "1");
+          router.push(`/inquiries?${next.toString()}`);
+        }}
+      >
+        {showArchived ? "Đang xem: Đã ẩn" : "Xem đã ẩn"}
+      </Button>
     </div>
   );
 
@@ -459,12 +516,38 @@ export function InquiryListClient({
     },
     {
       title: "",
-      width: 48,
+      width: 88,
       fixed: "right" as const,
       render: (_: unknown, r: Inquiry) => (
-        <Link href={`/inquiries/${r.id}`} aria-label="Chi tiết">
-          <Button type="text" size="small" icon={<EditOutlined />} />
-        </Link>
+        <Space size={0}>
+          <Link href={`/inquiries/${r.id}`} aria-label="Chi tiết">
+            <Button type="text" size="small" icon={<EditOutlined />} />
+          </Link>
+          {showArchived ? (
+            <Button
+              type="text"
+              size="small"
+              icon={<UndoOutlined />}
+              aria-label="Khôi phục"
+              onClick={(e) => {
+                e.stopPropagation();
+                void restoreRow(r);
+              }}
+            />
+          ) : (
+            <Button
+              type="text"
+              size="small"
+              danger
+              icon={<EyeInvisibleOutlined />}
+              aria-label="Ẩn"
+              onClick={(e) => {
+                e.stopPropagation();
+                archiveRow(r);
+              }}
+            />
+          )}
+        </Space>
       ),
     },
   ] as ColumnsType<Inquiry>;
@@ -601,6 +684,29 @@ export function InquiryListClient({
           </Button>
         </Space>
       }
+      footer={
+        editRow ? (
+          showArchived ? (
+            <Button
+              block
+              icon={<UndoOutlined />}
+              loading={saving}
+              onClick={() => void restoreRow(editRow)}
+            >
+              Khôi phục
+            </Button>
+          ) : (
+            <Button
+              block
+              danger
+              icon={<EyeInvisibleOutlined />}
+              onClick={() => archiveRow(editRow)}
+            >
+              Ẩn inquiry
+            </Button>
+          )
+        ) : null
+      }
     >
       {editRow && (
         <Form form={editForm} layout="vertical" requiredMark={false}>
@@ -647,7 +753,7 @@ export function InquiryListClient({
   return (
     <div>
       <PageHeader
-        title="Inquiries"
+        title={showArchived ? "Đã ẩn" : "Inquiries"}
         description={
           isMobile
             ? `${rows.length} bản ghi · chạm để sửa`
@@ -661,9 +767,11 @@ export function InquiryListClient({
             >
               Export
             </Button>
-            <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
-              Inquiry mới
-            </Button>
+            {!showArchived && (
+              <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
+                Inquiry mới
+              </Button>
+            )}
           </>
         }
       />

@@ -32,6 +32,7 @@ export type Inquiry = {
   next_follow_up_date: string | null;
   owner: string | null;
   last_reminded_at: string | null;
+  archived_at: string | null;
   created_at: string;
   updated_at: string;
   vendors?: Pick<Vendor, "id" | "name"> | null;

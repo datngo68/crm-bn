@@ -16,6 +16,7 @@ import {
   Space,
   Typography,
 } from "antd";
+import { EyeInvisibleOutlined, UndoOutlined } from "@ant-design/icons";
 import dayjs, { type Dayjs } from "dayjs";
 import { createClient } from "@/lib/supabase/client";
 import type { Inquiry, InquiryStatus, NewExisting, Vendor } from "@/lib/types";
@@ -77,12 +78,58 @@ export function InquiryForm({
   defaultFollowUpDays,
 }: Props) {
   const router = useRouter();
-  const { message } = App.useApp();
+  const { message, modal } = App.useApp();
   const [form] = Form.useForm<FormValues>();
   const [vendors, setVendors] = useState(initialVendors);
   const [newVendorName, setNewVendorName] = useState("");
   const [saving, setSaving] = useState(false);
   const isEdit = Boolean(inquiry);
+  const isArchived = Boolean(inquiry?.archived_at);
+
+  function archiveInquiry() {
+    if (!inquiry) return;
+    modal.confirm({
+      title: "Ẩn inquiry này?",
+      content: "Có thể khôi phục trong Inquiries → Xem đã ẩn.",
+      okText: "Ẩn",
+      okButtonProps: { danger: true },
+      cancelText: "Hủy",
+      onOk: async () => {
+        setSaving(true);
+        const supabase = createClient();
+        const { error } = await supabase
+          .from("inquiries")
+          .update({ archived_at: new Date().toISOString() })
+          .eq("id", inquiry.id);
+        setSaving(false);
+        if (error) {
+          message.error(error.message);
+          return;
+        }
+        message.success("Đã ẩn");
+        router.push("/inquiries");
+        router.refresh();
+      },
+    });
+  }
+
+  async function restoreInquiry() {
+    if (!inquiry) return;
+    setSaving(true);
+    const supabase = createClient();
+    const { error } = await supabase
+      .from("inquiries")
+      .update({ archived_at: null })
+      .eq("id", inquiry.id);
+    setSaving(false);
+    if (error) {
+      message.error(error.message);
+      return;
+    }
+    message.success("Đã khôi phục");
+    router.push("/inquiries");
+    router.refresh();
+  }
 
   const monthly = Form.useWatch("monthly_projection", form);
   const unit = Form.useWatch("unit_price_usd", form);
@@ -353,6 +400,24 @@ export function InquiryForm({
             {isEdit ? "Lưu" : "Tạo inquiry"}
           </Button>
           <Button onClick={() => router.back()}>Hủy</Button>
+          {isEdit &&
+            (isArchived ? (
+              <Button
+                icon={<UndoOutlined />}
+                loading={saving}
+                onClick={() => void restoreInquiry()}
+              >
+                Khôi phục
+              </Button>
+            ) : (
+              <Button
+                danger
+                icon={<EyeInvisibleOutlined />}
+                onClick={archiveInquiry}
+              >
+                Ẩn
+              </Button>
+            ))}
         </div>
       </Space>
     </Form>

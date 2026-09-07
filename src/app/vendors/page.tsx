@@ -6,7 +6,10 @@ export default async function VendorsPage() {
   const supabase = await createClient();
   const [{ data: vendors }, { data: inquiries }] = await Promise.all([
     supabase.from("vendors").select("*").order("name"),
-    supabase.from("inquiries").select("id, vendor_id, status, estimated_amount"),
+    supabase
+      .from("inquiries")
+      .select("id, vendor_id, status, estimated_amount")
+      .is("archived_at", null),
   ]);
 
   const stats: Record<

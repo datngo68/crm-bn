@@ -14,6 +14,7 @@ export default async function VendorDetailPage({ params }: Props) {
       .from("inquiries")
       .select("*")
       .eq("vendor_id", id)
+      .is("archived_at", null)
       .order("received_date", { ascending: false }),
   ]);
 

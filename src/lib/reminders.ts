@@ -31,6 +31,7 @@ export async function runReminders() {
     const { data } = await supabase
       .from("inquiries")
       .select("*, vendors(id, name)")
+      .is("archived_at", null)
       .eq("status", "Pending")
       .lte("next_follow_up_date", today)
       .not("next_follow_up_date", "is", null);
@@ -61,6 +62,7 @@ export async function runReminders() {
     const { data } = await supabase
       .from("inquiries")
       .select("*, vendors(id, name)")
+      .is("archived_at", null)
       .eq("status", "Pending");
 
     const list = (data ?? []) as Inquiry[];
