@@ -15,6 +15,7 @@ type Props = {
   dueToday: number;
   orderedMonth: number;
   focus: Inquiry[];
+  defaultFollowUpDays: number;
 };
 
 export function DashboardClient({
@@ -24,7 +25,9 @@ export function DashboardClient({
   dueToday,
   orderedMonth,
   focus,
+  defaultFollowUpDays,
 }: Props) {
+  void defaultFollowUpDays; // Task 3: Đã FU UI
   const stats = [
     { label: "Pending", value: pending, hint: "Đang theo dõi" },
     {

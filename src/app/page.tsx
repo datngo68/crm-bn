@@ -1,6 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { DashboardClient } from "@/components/dashboard-client";
-import type { Inquiry } from "@/lib/types";
+import type { AppSettings, Inquiry } from "@/lib/types";
 import { todayISO } from "@/lib/utils";
 
 export default async function DashboardPage() {
@@ -17,6 +17,7 @@ export default async function DashboardPage() {
     { count: dueToday },
     { count: orderedMonth },
     { data: focusRows },
+    { data: settings },
   ] = await Promise.all([
     base().eq("status", "Pending"),
     base().eq("status", "Pending").lt("next_follow_up_date", today).not("next_follow_up_date", "is", null),
@@ -24,14 +25,17 @@ export default async function DashboardPage() {
     base().eq("status", "Ordered").gte("updated_at", monthStart),
     supabase
       .from("inquiries")
-      .select("id, item_name, status, next_follow_up_date, estimated_amount, vendors(id, name)")
+      .select("id, item_name, status, next_follow_up_date, last_follow_up_date, estimated_amount, vendors(id, name)")
       .is("archived_at", null)
       .eq("status", "Pending")
       .lte("next_follow_up_date", today)
       .not("next_follow_up_date", "is", null)
       .order("next_follow_up_date", { ascending: true })
-      .limit(8),
+      .limit(50),
+    supabase.from("app_settings").select("default_follow_up_days").eq("id", 1).maybeSingle(),
   ]);
+
+  const s = settings as AppSettings | null;
 
   return (
     <DashboardClient
@@ -41,6 +45,7 @@ export default async function DashboardPage() {
       dueToday={dueToday ?? 0}
       orderedMonth={orderedMonth ?? 0}
       focus={(focusRows ?? []) as unknown as Inquiry[]}
+      defaultFollowUpDays={s?.default_follow_up_days ?? 3}
     />
   );
 }
