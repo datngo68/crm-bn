@@ -15,6 +15,7 @@ import {
   InputNumber,
   Select,
   Space,
+  Switch,
   Table,
   Tag,
   Typography,
@@ -99,6 +100,7 @@ export function InquiryListClient({
   const [editRow, setEditRow] = useState<Inquiry | null>(null);
   const [creating, setCreating] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [listLoading, setListLoading] = useState(false);
   const [newVendorName, setNewVendorName] = useState("");
   const [editForm] = Form.useForm<QuickEdit>();
   const [createForm] = Form.useForm<QuickCreate>();
@@ -114,6 +116,67 @@ export function InquiryListClient({
 
   function clearFilters() {
     router.push("/inquiries");
+  }
+
+  /** Client fetch — no full RSC reload when flipping archived toggle */
+  async function loadList(archived: boolean) {
+    setListLoading(true);
+    setEditRow(null);
+    const supabase = createClient();
+    let query = supabase
+      .from("inquiries")
+      .select("*, vendors(id, name)")
+      .order("created_at", { ascending: false });
+    query = archived
+      ? query.not("archived_at", "is", null)
+      : query.is("archived_at", null);
+
+    const status = sp.get("status");
+    const vendor = sp.get("vendor");
+    const owner = sp.get("owner");
+    if (status) query = query.eq("status", status);
+    if (vendor) query = query.eq("vendor_id", vendor);
+    if (owner) query = query.ilike("owner", `%${owner}%`);
+
+    const { data, error } = await query;
+    setListLoading(false);
+    if (error) {
+      message.error(error.message);
+      return;
+    }
+    let list = (data ?? []) as Inquiry[];
+    const q = sp.get("q")?.toLowerCase();
+    if (q) {
+      list = list.filter(
+        (i) =>
+          i.item_name.toLowerCase().includes(q) ||
+          (i.brand ?? "").toLowerCase().includes(q) ||
+          (i.item_code ?? "").toLowerCase().includes(q) ||
+          (i.vendors?.name ?? "").toLowerCase().includes(q),
+      );
+    }
+    const focus = sp.get("focus");
+    const today = todayISO();
+    if (focus === "due") {
+      list = list.filter(
+        (i) =>
+          i.status === "Pending" &&
+          i.next_follow_up_date &&
+          i.next_follow_up_date <= today,
+      );
+    } else if (focus === "overdue") {
+      list = list.filter(
+        (i) =>
+          i.status === "Pending" &&
+          i.next_follow_up_date &&
+          i.next_follow_up_date < today,
+      );
+    }
+    setRows(list);
+    const next = new URLSearchParams(sp.toString());
+    if (archived) next.set("archived", "1");
+    else next.delete("archived");
+    router.replace(`/inquiries?${next.toString()}`, { scroll: false });
   }
 
   const patch = useCallback(
@@ -368,17 +431,17 @@ export function InquiryListClient({
           Xóa lọc
         </Button>
       )}
-      <Button
-        type="link"
-        onClick={() => {
-          const next = new URLSearchParams(sp.toString());
-          if (showArchived) next.delete("archived");
-          else next.set("archived", "1");
-          router.push(`/inquiries?${next.toString()}`);
-        }}
-      >
-        {showArchived ? "Đang xem: Đã ẩn" : "Xem đã ẩn"}
-      </Button>
+      <Space size={8} style={{ marginLeft: "auto" }}>
+        <Typography.Text type="secondary" style={{ fontSize: 13 }}>
+          Đã ẩn
+        </Typography.Text>
+        <Switch
+          size="small"
+          checked={showArchived}
+          loading={listLoading}
+          onChange={(checked) => void loadList(checked)}
+        />
+      </Space>
     </div>
   );
 
@@ -778,7 +841,7 @@ export function InquiryListClient({
 
       {filters}
 
-      {rows.length === 0 ? (
+      {rows.length === 0 && !listLoading ? (
         <div
           style={{
             background: "#fff",
@@ -790,12 +853,14 @@ export function InquiryListClient({
           <Empty
             image={Empty.PRESENTED_IMAGE_SIMPLE}
             description={
-              hasFilters
-                ? "Không có bản ghi khớp bộ lọc"
-                : "Chưa có inquiry — thêm dòng đầu tiên"
+              showArchived
+                ? "Không có inquiry đã ẩn"
+                : hasFilters
+                  ? "Không có bản ghi khớp bộ lọc"
+                  : "Chưa có inquiry — thêm dòng đầu tiên"
             }
           >
-            {hasFilters ? (
+            {showArchived ? null : hasFilters ? (
               <Button onClick={clearFilters}>Xóa lọc</Button>
             ) : (
               <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
@@ -806,41 +871,57 @@ export function InquiryListClient({
         </div>
       ) : isMobile ? (
         <Space orientation="vertical" size={8} style={{ width: "100%" }}>
-          {rows.map((r) => (
-            <button
-              key={r.id}
-              type="button"
-              onClick={() => openEdit(r)}
+          {listLoading ? (
+            <div
               style={{
-                display: "block",
-                width: "100%",
-                textAlign: "left",
-                padding: 14,
+                padding: 32,
+                textAlign: "center",
                 background: "#fff",
-                border: "1px solid #E2E8F0",
                 borderRadius: 10,
-                cursor: "pointer",
+                border: "1px solid #E2E8F0",
+                color: "#94A3B8",
+                fontSize: 13,
               }}
             >
-              <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
-                <Typography.Text strong style={{ fontSize: 14 }}>
-                  {r.vendors?.name ?? "-"}
+              Đang tải…
+            </div>
+          ) : (
+            rows.map((r) => (
+              <button
+                key={r.id}
+                type="button"
+                onClick={() => openEdit(r)}
+                style={{
+                  display: "block",
+                  width: "100%",
+                  textAlign: "left",
+                  padding: 14,
+                  background: "#fff",
+                  border: "1px solid #E2E8F0",
+                  borderRadius: 10,
+                  cursor: "pointer",
+                }}
+              >
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
+                  <Typography.Text strong style={{ fontSize: 14 }}>
+                    {r.vendors?.name ?? "-"}
+                  </Typography.Text>
+                  <Tag color={statusTagColor[r.status]} style={{ margin: 0 }}>
+                    {r.status}
+                  </Tag>
+                </div>
+                <Typography.Text style={{ display: "block", marginTop: 4, fontSize: 13 }}>
+                  {r.item_name}
+                  {r.brand ? ` · ${r.brand}` : ""}
                 </Typography.Text>
-                <Tag color={statusTagColor[r.status]} style={{ margin: 0 }}>
-                  {r.status}
-                </Tag>
-              </div>
-              <Typography.Text style={{ display: "block", marginTop: 4, fontSize: 13 }}>
-                {r.item_name}
-                {r.brand ? ` · ${r.brand}` : ""}
-              </Typography.Text>
-              <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                {r.received_date} · FU {r.next_follow_up_date ?? "-"} ·{" "}
-                {formatUsd(r.estimated_amount)}
-                {r.owner ? ` · ${r.owner}` : ""}
-              </Typography.Text>
-            </button>
-          ))}
+                <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                  {r.received_date} · FU {r.next_follow_up_date ?? "-"} ·{" "}
+                  {formatUsd(r.estimated_amount)}
+                  {r.owner ? ` · ${r.owner}` : ""}
+                </Typography.Text>
+              </button>
+            ))
+          )}
         </Space>
       ) : (
         <div
@@ -853,6 +934,7 @@ export function InquiryListClient({
         >
           <Table
             rowKey="id"
+            loading={listLoading}
             dataSource={rows}
             size="middle"
             scroll={{ x: 1200 }}

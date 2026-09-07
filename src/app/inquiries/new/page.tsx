@@ -9,7 +9,7 @@ export default async function NewInquiryPage({ searchParams }: Props) {
   const sp = await searchParams;
   const supabase = await createClient();
   const [{ data: vendors }, { data: settings }] = await Promise.all([
-    supabase.from("vendors").select("*").order("name"),
+    supabase.from("vendors").select("*").is("archived_at", null).order("name"),
     supabase.from("app_settings").select("*").eq("id", 1).single(),
   ]);
   const s = settings as AppSettings | null;

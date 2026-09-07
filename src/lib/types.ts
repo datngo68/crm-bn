@@ -6,6 +6,7 @@ export type Vendor = {
   name: string;
   is_new: boolean;
   notes: string | null;
+  archived_at: string | null;
   created_at: string;
   updated_at: string;
 };

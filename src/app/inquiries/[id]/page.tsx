@@ -16,7 +16,7 @@ export default async function InquiryDetailPage({ params }: Props) {
         .select("*, vendors(id, name)")
         .eq("id", id)
         .maybeSingle(),
-      supabase.from("vendors").select("*").order("name"),
+      supabase.from("vendors").select("*").is("archived_at", null).order("name"),
       supabase.from("app_settings").select("*").eq("id", 1).single(),
     ]);
 

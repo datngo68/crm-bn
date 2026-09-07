@@ -1,11 +1,24 @@
+import { Suspense } from "react";
 import { createClient } from "@/lib/supabase/server";
 import { VendorListClient } from "@/components/vendor-list-client";
 import type { Inquiry, Vendor } from "@/lib/types";
 
-export default async function VendorsPage() {
+type Props = {
+  searchParams: Promise<Record<string, string | undefined>>;
+};
+
+export default async function VendorsPage({ searchParams }: Props) {
+  const sp = await searchParams;
+  const showArchived = sp.archived === "1";
   const supabase = await createClient();
+
+  let vendorQuery = supabase.from("vendors").select("*").order("name");
+  vendorQuery = showArchived
+    ? vendorQuery.not("archived_at", "is", null)
+    : vendorQuery.is("archived_at", null);
+
   const [{ data: vendors }, { data: inquiries }] = await Promise.all([
-    supabase.from("vendors").select("*").order("name"),
+    vendorQuery,
     supabase
       .from("inquiries")
       .select("id, vendor_id, status, estimated_amount")
@@ -34,6 +47,11 @@ export default async function VendorsPage() {
   }
 
   return (
-    <VendorListClient vendors={(vendors ?? []) as Vendor[]} stats={stats} />
+    <Suspense fallback={null}>
+      <VendorListClient
+        vendors={(vendors ?? []) as Vendor[]}
+        stats={stats}
+      />
+    </Suspense>
   );
 }
