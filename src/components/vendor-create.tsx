@@ -28,15 +28,15 @@ export function VendorCreate() {
   }
 
   return (
-    <Space.Compact style={{ width: "100%", maxWidth: 480 }}>
+    <Space.Compact style={{ width: 280 }}>
       <Input
-        placeholder="Tên vendor mới…"
+        placeholder="Tên vendor mới"
         value={name}
         onChange={(e) => setName(e.target.value)}
         onPressEnter={create}
       />
       <Button type="primary" loading={loading} onClick={create}>
-        Thêm vendor
+        Thêm
       </Button>
     </Space.Compact>
   );

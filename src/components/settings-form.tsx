@@ -123,6 +123,8 @@ export function SettingsForm({ settings: initial }: Props) {
     }
   }
 
+  const cardProps = { style: { borderRadius: 10 } as const };
+
   return (
     <Tabs
       items={[
@@ -130,9 +132,9 @@ export function SettingsForm({ settings: initial }: Props) {
           key: "telegram",
           label: "Telegram",
           children: (
-            <Card title="Kết nối Telegram">
-              <Typography.Paragraph type="secondary">
-                Bấm Kết nối → Start trong Telegram. Không cần nhập Chat ID.
+            <Card title="Kết nối Telegram" {...cardProps}>
+              <Typography.Paragraph type="secondary" style={{ fontSize: 13 }}>
+                Bấm Kết nối, rồi Start trong Telegram. Không cần nhập Chat ID.
               </Typography.Paragraph>
               <Alert
                 style={{ marginBottom: 16 }}
@@ -219,7 +221,7 @@ export function SettingsForm({ settings: initial }: Props) {
           key: "remind",
           label: "Luật nhắc",
           children: (
-            <Card title="Luật nhắc follow-up">
+            <Card title="Luật nhắc follow-up" {...cardProps}>
               <Form
                 layout="vertical"
                 initialValues={s}
@@ -270,7 +272,7 @@ export function SettingsForm({ settings: initial }: Props) {
           key: "defaults",
           label: "Mặc định",
           children: (
-            <Card title="Mặc định nghiệp vụ">
+            <Card title="Mặc định nghiệp vụ" {...cardProps}>
               <Form
                 layout="vertical"
                 initialValues={s}

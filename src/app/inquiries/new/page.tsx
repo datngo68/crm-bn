@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { InquiryForm } from "@/components/inquiry-form";
+import { PageHeader } from "@/components/page-header";
 import type { AppSettings, Vendor } from "@/lib/types";
 
 type Props = { searchParams: Promise<{ vendor?: string }> };
@@ -15,9 +16,10 @@ export default async function NewInquiryPage({ searchParams }: Props) {
 
   return (
     <div>
-      <h1 style={{ fontSize: 24, fontWeight: 600, marginBottom: 16 }}>
-        Inquiry mới
-      </h1>
+      <PageHeader
+        title="Inquiry mới"
+        description="Nhập nhanh, hệ thống nhắc follow-up sau"
+      />
       <InquiryForm
         vendors={(vendors ?? []) as Vendor[]}
         defaultVendorId={sp.vendor}

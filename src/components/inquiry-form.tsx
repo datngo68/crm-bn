@@ -14,6 +14,7 @@ import {
   Row,
   Select,
   Space,
+  Typography,
 } from "antd";
 import dayjs, { type Dayjs } from "dayjs";
 import { createClient } from "@/lib/supabase/client";
@@ -55,6 +56,19 @@ function d(v?: string | null) {
   return v ? dayjs(v) : null;
 }
 
+const sectionTitle = (t: string, hint?: string) => (
+  <div>
+    <Typography.Text strong style={{ fontSize: 14 }}>
+      {t}
+    </Typography.Text>
+    {hint ? (
+      <Typography.Text type="secondary" style={{ display: "block", fontSize: 12, fontWeight: 400 }}>
+        {hint}
+      </Typography.Text>
+    ) : null}
+  </div>
+);
+
 export function InquiryForm({
   vendors: initialVendors,
   inquiry,
@@ -81,10 +95,9 @@ export function InquiryForm({
     const name = newVendorName.trim();
     if (!name) return;
     const supabase = createClient();
-    const newExisting = form.getFieldValue("new_existing") as NewExisting;
     const { data, error } = await supabase
       .from("vendors")
-      .insert({ name, is_new: newExisting !== "Existing" })
+      .insert({ name })
       .select("*")
       .single();
     if (error) {
@@ -94,7 +107,7 @@ export function InquiryForm({
     setVendors((v) => [...v, data].sort((a, b) => a.name.localeCompare(b.name)));
     form.setFieldValue("vendor_id", data.id);
     setNewVendorName("");
-    message.success("Đã tạo vendor");
+    message.success("Đã thêm vendor");
   }
 
   async function onFinish(values: FormValues) {
@@ -106,12 +119,13 @@ export function InquiryForm({
       new_existing: values.new_existing,
       item_code: values.item_code || null,
       brand: values.brand || null,
-      item_name: values.item_name.trim(),
+      item_name: values.item_name,
       category: values.category || null,
       nominated_status: values.nominated_status || null,
       monthly_projection: values.monthly_projection ?? null,
       unit_price_usd: values.unit_price_usd ?? null,
-      estimated_amount: values.estimated_amount ?? autoAmount ?? null,
+      estimated_amount:
+        values.estimated_amount ?? autoAmount ?? null,
       quoted_date: values.quoted_date?.format("YYYY-MM-DD") ?? null,
       first_order_date_plan:
         values.first_order_date_plan?.format("YYYY-MM-DD") ?? null,
@@ -125,15 +139,11 @@ export function InquiryForm({
       owner: values.owner || null,
     };
 
-    const { data, error } = isEdit
-      ? await supabase
-          .from("inquiries")
-          .update(payload)
-          .eq("id", inquiry!.id)
-          .select("id")
-          .single()
-      : await supabase.from("inquiries").insert(payload).select("id").single();
+    const q = isEdit
+      ? supabase.from("inquiries").update(payload).eq("id", inquiry!.id).select("id").single()
+      : supabase.from("inquiries").insert(payload).select("id").single();
 
+    const { data, error } = await q;
     setSaving(false);
     if (error) {
       message.error(error.message);
@@ -144,11 +154,14 @@ export function InquiryForm({
     router.refresh();
   }
 
+  const cardStyle = { borderRadius: 10 };
+
   return (
     <Form
       form={form}
       layout="vertical"
       onFinish={onFinish}
+      requiredMark="optional"
       initialValues={{
         vendor_id: inquiry?.vendor_id ?? defaultVendorId,
         received_date: d(inquiry?.received_date) ?? dayjs(todayISO()),
@@ -172,9 +185,9 @@ export function InquiryForm({
         owner: inquiry?.owner ?? defaultOwner,
       }}
     >
-      <Space direction="vertical" size="middle" style={{ width: "100%" }}>
-        <Card title="Thông tin chính">
-          <Row gutter={16}>
+      <Space direction="vertical" size={16} style={{ width: "100%" }}>
+        <Card title={sectionTitle("Khách & trạng thái")} style={cardStyle}>
+          <Row gutter={[16, 0]}>
             <Col xs={24} md={12}>
               <Form.Item
                 label="Vendor"
@@ -190,23 +203,20 @@ export function InquiryForm({
               </Form.Item>
               <Space.Compact style={{ width: "100%", marginTop: -8, marginBottom: 16 }}>
                 <Input
-                  placeholder="Tạo vendor mới…"
+                  placeholder="Hoặc tạo vendor mới"
                   value={newVendorName}
                   onChange={(e) => setNewVendorName(e.target.value)}
+                  onPressEnter={createVendor}
                 />
                 <Button onClick={createVendor}>Thêm</Button>
               </Space.Compact>
             </Col>
-            <Col xs={24} md={12}>
-              <Form.Item
-                label="Date of Receiving Inquiry"
-                name="received_date"
-                rules={[{ required: true }]}
-              >
-                <DatePicker style={{ width: "100%" }} />
+            <Col xs={24} md={6}>
+              <Form.Item label="Ngày nhận" name="received_date" rules={[{ required: true }]}>
+                <DatePicker style={{ width: "100%" }} format="DD/MM/YYYY" />
               </Form.Item>
             </Col>
-            <Col xs={24} md={12}>
+            <Col xs={24} md={6}>
               <Form.Item label="New / Existing" name="new_existing">
                 <Select
                   options={[
@@ -216,26 +226,41 @@ export function InquiryForm({
                 />
               </Form.Item>
             </Col>
-            <Col xs={24} md={12}>
+            <Col xs={24} md={8}>
               <Form.Item label="Status" name="status" rules={[{ required: true }]}>
                 <Select options={STATUSES.map((s) => ({ value: s, label: s }))} />
               </Form.Item>
             </Col>
+            <Col xs={24} md={8}>
+              <Form.Item label="Owner" name="owner">
+                <Input placeholder="Người phụ trách" />
+              </Form.Item>
+            </Col>
+            <Col xs={24} md={8}>
+              <Form.Item label="Nominated" name="nominated_status">
+                <Input />
+              </Form.Item>
+            </Col>
+          </Row>
+        </Card>
+
+        <Card title={sectionTitle("Sản phẩm")} style={cardStyle}>
+          <Row gutter={[16, 0]}>
             <Col xs={24} md={12}>
               <Form.Item
                 label="Item"
                 name="item_name"
-                rules={[{ required: true, message: "Nhập item" }]}
+                rules={[{ required: true, message: "Nhập tên item" }]}
               >
-                <Input />
+                <Input placeholder="Tên hàng" />
               </Form.Item>
             </Col>
-            <Col xs={24} md={12}>
+            <Col xs={24} md={6}>
               <Form.Item label="Item Code" name="item_code">
                 <Input />
               </Form.Item>
             </Col>
-            <Col xs={24} md={12}>
+            <Col xs={24} md={6}>
               <Form.Item label="Brand" name="brand">
                 <Input />
               </Form.Item>
@@ -245,77 +270,85 @@ export function InquiryForm({
                 <Input />
               </Form.Item>
             </Col>
-            <Col xs={24} md={12}>
-              <Form.Item label="Nominated Status" name="nominated_status">
-                <Input />
+          </Row>
+        </Card>
+
+        <Card
+          title={sectionTitle(
+            "Giá & kế hoạch",
+            autoAmount != null ? `Gợi ý amount: $${autoAmount}` : undefined,
+          )}
+          style={cardStyle}
+        >
+          <Row gutter={[16, 0]}>
+            <Col xs={12} md={6}>
+              <Form.Item label="Monthly qty" name="monthly_projection">
+                <InputNumber style={{ width: "100%" }} min={0} />
               </Form.Item>
             </Col>
-            <Col xs={24} md={12}>
-              <Form.Item label="Owner" name="owner">
-                <Input />
+            <Col xs={12} md={6}>
+              <Form.Item label="Unit (USD)" name="unit_price_usd">
+                <InputNumber style={{ width: "100%" }} min={0} prefix="$" />
+              </Form.Item>
+            </Col>
+            <Col xs={12} md={6}>
+              <Form.Item label="Est. Amount" name="estimated_amount">
+                <InputNumber
+                  style={{ width: "100%" }}
+                  min={0}
+                  prefix="$"
+                  placeholder={autoAmount?.toString()}
+                />
+              </Form.Item>
+            </Col>
+            <Col xs={12} md={6}>
+              <Form.Item label="Quoted" name="quoted_date">
+                <DatePicker style={{ width: "100%" }} format="DD/MM/YYYY" />
+              </Form.Item>
+            </Col>
+            <Col xs={12} md={6}>
+              <Form.Item label="1st Order plan" name="first_order_date_plan">
+                <DatePicker style={{ width: "100%" }} format="DD/MM/YYYY" />
+              </Form.Item>
+            </Col>
+            <Col xs={12} md={6}>
+              <Form.Item label="Last FU" name="last_follow_up_date">
+                <DatePicker style={{ width: "100%" }} format="DD/MM/YYYY" />
+              </Form.Item>
+            </Col>
+            <Col xs={12} md={6}>
+              <Form.Item label="Next FU" name="next_follow_up_date">
+                <DatePicker style={{ width: "100%" }} format="DD/MM/YYYY" />
               </Form.Item>
             </Col>
           </Row>
         </Card>
 
-        <Card title="Giá & kế hoạch">
-          <Row gutter={16}>
-            <Col xs={24} md={12}>
-              <Form.Item label="Monthly Projection" name="monthly_projection">
-                <InputNumber style={{ width: "100%" }} />
-              </Form.Item>
-            </Col>
-            <Col xs={24} md={12}>
-              <Form.Item label="Unit Price (USD)" name="unit_price_usd">
-                <InputNumber style={{ width: "100%" }} />
-              </Form.Item>
-            </Col>
-            <Col xs={24} md={12}>
-              <Form.Item
-                label={`Estimated Amount${autoAmount != null ? ` (gợi ý ${autoAmount})` : ""}`}
-                name="estimated_amount"
-              >
-                <InputNumber style={{ width: "100%" }} placeholder={autoAmount?.toString()} />
-              </Form.Item>
-            </Col>
-            <Col xs={24} md={12}>
-              <Form.Item label="Quoted Date" name="quoted_date">
-                <DatePicker style={{ width: "100%" }} />
-              </Form.Item>
-            </Col>
-            <Col xs={24} md={12}>
-              <Form.Item label="1st Order Date Plan" name="first_order_date_plan">
-                <DatePicker style={{ width: "100%" }} />
-              </Form.Item>
-            </Col>
-            <Col xs={24} md={12}>
-              <Form.Item label="Last Follow-up Date" name="last_follow_up_date">
-                <DatePicker style={{ width: "100%" }} />
-              </Form.Item>
-            </Col>
-            <Col xs={24} md={12}>
-              <Form.Item label="Next Follow-up Date" name="next_follow_up_date">
-                <DatePicker style={{ width: "100%" }} />
-              </Form.Item>
-            </Col>
-          </Row>
-        </Card>
-
-        <Card title="Ghi chú">
-          <Form.Item label="Reason for not sending order" name="reason_no_order">
-            <Input.TextArea rows={3} />
+        <Card title={sectionTitle("Ghi chú theo dõi")} style={cardStyle}>
+          <Form.Item label="Lý do chưa đặt" name="reason_no_order">
+            <Input.TextArea rows={2} placeholder="Ngắn gọn" />
           </Form.Item>
-          <Form.Item label="Action Plan in detail" name="action_plan">
-            <Input.TextArea rows={3} />
+          <Form.Item label="Action plan" name="action_plan" style={{ marginBottom: 0 }}>
+            <Input.TextArea rows={3} placeholder="Bước tiếp theo" />
           </Form.Item>
         </Card>
 
-        <Space>
+        <div
+          style={{
+            position: "sticky",
+            bottom: 0,
+            zIndex: 10,
+            display: "flex",
+            gap: 8,
+            padding: "12px 0",
+            background: "linear-gradient(transparent, #F8FAFC 30%)",
+          }}
+        >
           <Button type="primary" htmlType="submit" loading={saving}>
-            {isEdit ? "Lưu thay đổi" : "Tạo inquiry"}
+            {isEdit ? "Lưu" : "Tạo inquiry"}
           </Button>
           <Button onClick={() => router.back()}>Hủy</Button>
-        </Space>
+        </div>
       </Space>
     </Form>
   );

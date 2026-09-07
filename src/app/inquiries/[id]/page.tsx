@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { InquiryForm } from "@/components/inquiry-form";
+import { PageHeader } from "@/components/page-header";
 import type { AppSettings, Inquiry, Vendor } from "@/lib/types";
 
 type Props = { params: Promise<{ id: string }> };
@@ -25,10 +26,10 @@ export default async function InquiryDetailPage({ params }: Props) {
 
   return (
     <div>
-      <h1 style={{ fontSize: 24, fontWeight: 600, margin: 0 }}>
-        {row.vendors?.name} · {row.item_name}
-      </h1>
-      <p style={{ color: "#64748b", marginBottom: 16 }}>Chỉnh sửa inquiry</p>
+      <PageHeader
+        title={`${row.vendors?.name ?? "Inquiry"} · ${row.item_name}`}
+        description="Chỉnh sửa inquiry"
+      />
       <InquiryForm
         inquiry={row}
         vendors={(vendors ?? []) as Vendor[]}

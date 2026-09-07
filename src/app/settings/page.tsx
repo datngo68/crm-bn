@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { SettingsForm } from "@/components/settings-form";
+import { PageHeader } from "@/components/page-header";
 import type { AppSettings } from "@/lib/types";
 
 export default async function SettingsPage() {
@@ -12,7 +13,7 @@ export default async function SettingsPage() {
 
   if (!data) {
     return (
-      <p style={{ color: "#cf1322" }}>
+      <p style={{ color: "#DC2626" }}>
         Chưa có bảng app_settings — chạy migration SQL trước.
       </p>
     );
@@ -27,12 +28,10 @@ export default async function SettingsPage() {
 
   return (
     <div>
-      <h1 style={{ fontSize: 24, fontWeight: 600, margin: "0 0 4px" }}>
-        Cài đặt
-      </h1>
-      <p style={{ color: "#64748b", marginBottom: 16 }}>
-        Telegram, luật nhắc, mặc định — đơn giản, đủ dùng
-      </p>
+      <PageHeader
+        title="Settings"
+        description="Telegram, luật nhắc, giá trị mặc định"
+      />
       <SettingsForm settings={safe} />
     </div>
   );

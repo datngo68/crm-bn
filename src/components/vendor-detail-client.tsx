@@ -1,67 +1,79 @@
 "use client";
 
 import Link from "next/link";
-import { Button, Card, List, Space, Tag, Typography } from "antd";
+import { Button, Card, Empty, List, Tag } from "antd";
 import { PlusOutlined } from "@ant-design/icons";
 import { formatUsd } from "@/lib/utils";
 import type { Inquiry, InquiryStatus, Vendor } from "@/lib/types";
-
-const statusColor: Record<InquiryStatus, string> = {
-  Pending: "gold",
-  Ordered: "green",
-  Lost: "red",
-  "No Order": "default",
-};
+import { PageHeader } from "@/components/page-header";
+import { statusTagColor } from "@/lib/theme";
 
 type Props = { vendor: Vendor; inquiries: Inquiry[] };
 
 export function VendorDetailClient({ vendor, inquiries }: Props) {
   return (
-    <Space direction="vertical" size="middle" style={{ width: "100%" }}>
-      <div
-        style={{
-          display: "flex",
-          flexWrap: "wrap",
-          gap: 12,
-          justifyContent: "space-between",
-        }}
-      >
-        <div>
-          <Link href="/vendors">← Vendor</Link>
-          <Typography.Title level={3} style={{ margin: "4px 0 0" }}>
-            {vendor.name}
-          </Typography.Title>
-          <Typography.Text type="secondary">
-            {vendor.is_new ? "New" : "Existing"} · {inquiries.length} inquiry
-          </Typography.Text>
-        </div>
-        <Link href={`/inquiries/new?vendor=${vendor.id}`}>
-          <Button type="primary" icon={<PlusOutlined />}>
-            Inquiry cho vendor này
-          </Button>
-        </Link>
-      </div>
+    <div>
+      <PageHeader
+        title={vendor.name}
+        description={`${vendor.is_new ? "New" : "Existing"} · ${inquiries.length} inquiry`}
+        extra={
+          <>
+            <Link href="/vendors">
+              <Button>Quay lại</Button>
+            </Link>
+            <Link href={`/inquiries/new?vendor=${vendor.id}`}>
+              <Button type="primary" icon={<PlusOutlined />}>
+                Inquiry mới
+              </Button>
+            </Link>
+          </>
+        }
+      />
 
-      <Card>
-        <List
-          locale={{ emptyText: "Chưa có inquiry." }}
-          dataSource={inquiries}
-          renderItem={(i) => (
-            <List.Item
-              actions={[
-                <Tag key="s" color={statusColor[i.status]}>
-                  {i.status}
-                </Tag>,
-              ]}
-            >
-              <List.Item.Meta
-                title={<Link href={`/inquiries/${i.id}`}>{i.item_name}</Link>}
-                description={`${i.received_date} · FU ${i.next_follow_up_date ?? "—"} · ${formatUsd(i.estimated_amount)}`}
-              />
-            </List.Item>
-          )}
-        />
+      <Card style={{ borderRadius: 10 }} styles={{ body: { paddingTop: 8 } }}>
+        {inquiries.length === 0 ? (
+          <Empty
+            image={Empty.PRESENTED_IMAGE_SIMPLE}
+            description="Chưa có inquiry"
+            style={{ padding: 32 }}
+          />
+        ) : (
+          <List
+            dataSource={inquiries}
+            renderItem={(i) => (
+              <List.Item
+                style={{ paddingInline: 0 }}
+                actions={[
+                  <Tag
+                    key="s"
+                    color={statusTagColor[i.status as InquiryStatus]}
+                    style={{ marginInlineEnd: 0 }}
+                  >
+                    {i.status}
+                  </Tag>,
+                ]}
+              >
+                <List.Item.Meta
+                  title={
+                    <Link
+                      href={`/inquiries/${i.id}`}
+                      style={{ fontWeight: 500, color: "#0F172A" }}
+                    >
+                      {i.item_name}
+                    </Link>
+                  }
+                  description={
+                    <span style={{ fontSize: 12, color: "#64748B" }}>
+                      {i.received_date} · FU {i.next_follow_up_date ?? "-"} ·{" "}
+                      {formatUsd(i.estimated_amount)}
+                    </span>
+                  }
+                />
+              </List.Item>
+            )}
+          />
+        )}
       </Card>
-    </Space>
+    </div>
   );
 }

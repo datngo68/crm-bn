@@ -26,37 +26,60 @@ export default function LoginPage() {
   return (
     <div
       style={{
-        minHeight: "100vh",
+        minHeight: "100dvh",
         display: "grid",
         placeItems: "center",
-        padding: 16,
-        background: "#f5f7fb",
+        padding: 24,
+        background:
+          "radial-gradient(1200px 600px at 10% -10%, #e2e8f0 0%, transparent 55%), #F8FAFC",
       }}
     >
-      <Card style={{ width: "100%", maxWidth: 420 }}>
-        <Typography.Title level={3} style={{ marginTop: 0 }}>
-          Đăng nhập CRM Inquiry
+      <Card
+        style={{ width: "100%", maxWidth: 400, borderRadius: 12 }}
+        styles={{ body: { padding: 28 } }}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 20 }}>
+          <span
+            style={{
+              width: 32,
+              height: 32,
+              borderRadius: 8,
+              background: "#0F172A",
+              color: "#fff",
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              fontSize: 12,
+              fontWeight: 700,
+            }}
+          >
+            CI
+          </span>
+          <Typography.Text strong>CRM Inquiry</Typography.Text>
+        </div>
+        <Typography.Title level={4} style={{ margin: "0 0 4px", letterSpacing: "-0.02em" }}>
+          Đăng nhập
         </Typography.Title>
-        <Typography.Paragraph type="secondary">
-          Solo user — email / mật khẩu Supabase
+        <Typography.Paragraph type="secondary" style={{ marginBottom: 24, fontSize: 13 }}>
+          Workspace theo dõi inquiry và follow-up
         </Typography.Paragraph>
-        <Form layout="vertical" onFinish={onFinish} requiredMark={false}>
+        <Form layout="vertical" onFinish={onFinish} requiredMark={false} size="middle">
           <Form.Item
             label="Email"
             name="email"
-            rules={[{ required: true, type: "email" }]}
+            rules={[{ required: true, type: "email", message: "Nhập email hợp lệ" }]}
           >
-            <Input size="large" autoComplete="email" />
+            <Input autoComplete="email" placeholder="you@company.com" />
           </Form.Item>
           <Form.Item
             label="Mật khẩu"
             name="password"
-            rules={[{ required: true }]}
+            rules={[{ required: true, message: "Nhập mật khẩu" }]}
           >
-            <Input.Password size="large" autoComplete="current-password" />
+            <Input.Password autoComplete="current-password" placeholder="••••••••" />
           </Form.Item>
-          <Button type="primary" htmlType="submit" block size="large" loading={loading}>
-            Đăng nhập
+          <Button type="primary" htmlType="submit" block loading={loading}>
+            Tiếp tục
           </Button>
         </Form>
       </Card>
