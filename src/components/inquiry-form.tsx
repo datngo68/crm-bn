@@ -150,7 +150,12 @@ export function InquiryForm({
       return;
     }
     message.success(isEdit ? "Đã cập nhật" : "Đã tạo inquiry");
-    router.push(`/inquiries/${data.id}`);
+    // After create: back to list so the new row is visible. Edit stays on detail.
+    if (isEdit) {
+      router.push(`/inquiries/${data.id}`);
+    } else {
+      router.push("/inquiries");
+    }
     router.refresh();
   }
 
@@ -185,7 +190,7 @@ export function InquiryForm({
         owner: inquiry?.owner ?? defaultOwner,
       }}
     >
-      <Space direction="vertical" size={16} style={{ width: "100%" }}>
+      <Space orientation="vertical" size={16} style={{ width: "100%" }}>
         <Card title={sectionTitle("Khách & trạng thái")} style={cardStyle}>
           <Row gutter={[16, 0]}>
             <Col xs={24} md={12}>

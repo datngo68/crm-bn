@@ -1,7 +1,7 @@
 import { Suspense } from "react";
 import { createClient } from "@/lib/supabase/server";
 import { InquiryListClient } from "@/components/inquiry-list-client";
-import type { Inquiry, Vendor } from "@/lib/types";
+import type { AppSettings, Inquiry, Vendor } from "@/lib/types";
 import { todayISO } from "@/lib/utils";
 
 type Props = {
@@ -13,21 +13,24 @@ export default async function InquiriesPage({ searchParams }: Props) {
   const supabase = await createClient();
   const today = todayISO();
 
-  const { data: vendors } = await supabase
-    .from("vendors")
-    .select("*")
-    .order("name");
+  const [{ data: vendors }, { data: settings }] = await Promise.all([
+    supabase.from("vendors").select("*").order("name"),
+    supabase.from("app_settings").select("*").eq("id", 1).single(),
+  ]);
 
   let query = supabase
     .from("inquiries")
     .select("*, vendors(id, name)")
-    .order("received_date", { ascending: false });
+    .order("created_at", { ascending: false });
 
   if (sp.status) query = query.eq("status", sp.status);
   if (sp.vendor) query = query.eq("vendor_id", sp.vendor);
   if (sp.owner) query = query.ilike("owner", `%${sp.owner}%`);
 
-  const { data } = await query;
+  const { data, error } = await query;
+  if (error) {
+    console.error("inquiries list", error.message);
+  }
   let list = (data ?? []) as Inquiry[];
 
   if (sp.q) {
@@ -57,11 +60,15 @@ export default async function InquiriesPage({ searchParams }: Props) {
     );
   }
 
+  const s = settings as AppSettings | null;
+
   return (
     <Suspense fallback={null}>
       <InquiryListClient
         inquiries={list}
         vendors={(vendors ?? []) as Vendor[]}
+        defaultOwner={s?.default_owner ?? ""}
+        defaultFollowUpDays={s?.default_follow_up_days ?? 3}
       />
     </Suspense>
   );
