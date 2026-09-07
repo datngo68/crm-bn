@@ -16,11 +16,10 @@ import {
   Space,
   Typography,
 } from "antd";
-import { EyeInvisibleOutlined, UndoOutlined } from "@ant-design/icons";
 import dayjs, { type Dayjs } from "dayjs";
 import { createClient } from "@/lib/supabase/client";
 import type { Inquiry, InquiryStatus, NewExisting, Vendor } from "@/lib/types";
-import { STATUSES } from "@/lib/types";
+import { NOMINATED_STATUSES, STATUSES } from "@/lib/types";
 import { addDaysISO, todayISO } from "@/lib/utils";
 
 type Props = {
@@ -78,58 +77,13 @@ export function InquiryForm({
   defaultFollowUpDays,
 }: Props) {
   const router = useRouter();
-  const { message, modal } = App.useApp();
+  const { message } = App.useApp();
   const [form] = Form.useForm<FormValues>();
   const [vendors, setVendors] = useState(initialVendors);
   const [newVendorName, setNewVendorName] = useState("");
   const [saving, setSaving] = useState(false);
   const isEdit = Boolean(inquiry);
-  const isArchived = Boolean(inquiry?.archived_at);
-
-  function archiveInquiry() {
-    if (!inquiry) return;
-    modal.confirm({
-      title: "Ẩn inquiry này?",
-      content: "Có thể khôi phục trong Inquiries → Xem đã ẩn.",
-      okText: "Ẩn",
-      okButtonProps: { danger: true },
-      cancelText: "Hủy",
-      onOk: async () => {
-        setSaving(true);
-        const supabase = createClient();
-        const { error } = await supabase
-          .from("inquiries")
-          .update({ archived_at: new Date().toISOString() })
-          .eq("id", inquiry.id);
-        setSaving(false);
-        if (error) {
-          message.error(error.message);
-          return;
-        }
-        message.success("Đã ẩn");
-        router.push("/inquiries");
-        router.refresh();
-      },
-    });
-  }
-
-  async function restoreInquiry() {
-    if (!inquiry) return;
-    setSaving(true);
-    const supabase = createClient();
-    const { error } = await supabase
-      .from("inquiries")
-      .update({ archived_at: null })
-      .eq("id", inquiry.id);
-    setSaving(false);
-    if (error) {
-      message.error(error.message);
-      return;
-    }
-    message.success("Đã khôi phục");
-    router.push("/inquiries");
-    router.refresh();
-  }
+  const statusWatch = Form.useWatch("status", form);
 
   const monthly = Form.useWatch("monthly_projection", form);
   const unit = Form.useWatch("unit_price_usd", form);
@@ -171,12 +125,12 @@ export function InquiryForm({
       nominated_status: values.nominated_status || null,
       monthly_projection: values.monthly_projection ?? null,
       unit_price_usd: values.unit_price_usd ?? null,
-      estimated_amount:
-        values.estimated_amount ?? autoAmount ?? null,
+      estimated_amount: values.estimated_amount ?? autoAmount ?? null,
       quoted_date: values.quoted_date?.format("YYYY-MM-DD") ?? null,
       first_order_date_plan:
         values.first_order_date_plan?.format("YYYY-MM-DD") ?? null,
-      reason_no_order: values.reason_no_order || null,
+      reason_no_order:
+        values.status === "No Order" ? values.reason_no_order || null : null,
       action_plan: values.action_plan || null,
       status: values.status,
       last_follow_up_date:
@@ -197,7 +151,6 @@ export function InquiryForm({
       return;
     }
     message.success(isEdit ? "Đã cập nhật" : "Đã tạo inquiry");
-    // After create: back to list so the new row is visible. Edit stays on detail.
     if (isEdit) {
       router.push(`/inquiries/${data.id}`);
     } else {
@@ -258,9 +211,9 @@ export function InquiryForm({
                   placeholder="Hoặc tạo vendor mới"
                   value={newVendorName}
                   onChange={(e) => setNewVendorName(e.target.value)}
-                  onPressEnter={createVendor}
+                  onPressEnter={() => void createVendor()}
                 />
-                <Button onClick={createVendor}>Thêm</Button>
+                <Button onClick={() => void createVendor()}>Thêm</Button>
               </Space.Compact>
             </Col>
             <Col xs={24} md={6}>
@@ -289,10 +242,24 @@ export function InquiryForm({
               </Form.Item>
             </Col>
             <Col xs={24} md={8}>
-              <Form.Item label="Nominated" name="nominated_status">
-                <Input />
+              <Form.Item label="Nominated Status" name="nominated_status">
+                <Select
+                  allowClear
+                  options={NOMINATED_STATUSES.map((s) => ({ value: s, label: s }))}
+                />
               </Form.Item>
             </Col>
+            {statusWatch === "No Order" && (
+              <Col xs={24}>
+                <Form.Item
+                  label="Reason for no order"
+                  name="reason_no_order"
+                  rules={[{ required: true, message: "Nhập lý do" }]}
+                >
+                  <Input.TextArea rows={2} placeholder="Lý do không đặt hàng" />
+                </Form.Item>
+              </Col>
+            )}
           </Row>
         </Card>
 
@@ -300,15 +267,15 @@ export function InquiryForm({
           <Row gutter={[16, 0]}>
             <Col xs={24} md={12}>
               <Form.Item
-                label="Item"
+                label="Item code"
                 name="item_name"
-                rules={[{ required: true, message: "Nhập tên item" }]}
+                rules={[{ required: true, message: "Nhập item code" }]}
               >
-                <Input placeholder="Tên hàng" />
+                <Input placeholder="Item code" />
               </Form.Item>
             </Col>
             <Col xs={24} md={6}>
-              <Form.Item label="Item Code" name="item_code">
+              <Form.Item label="RBO code" name="item_code">
                 <Input />
               </Form.Item>
             </Col>
@@ -318,7 +285,7 @@ export function InquiryForm({
               </Form.Item>
             </Col>
             <Col xs={24} md={12}>
-              <Form.Item label="Category" name="category">
+              <Form.Item label="Item type" name="category">
                 <Input />
               </Form.Item>
             </Col>
@@ -377,9 +344,6 @@ export function InquiryForm({
         </Card>
 
         <Card title={sectionTitle("Ghi chú theo dõi")} style={cardStyle}>
-          <Form.Item label="Lý do chưa đặt" name="reason_no_order">
-            <Input.TextArea rows={2} placeholder="Ngắn gọn" />
-          </Form.Item>
           <Form.Item label="Action plan" name="action_plan" style={{ marginBottom: 0 }}>
             <Input.TextArea rows={3} placeholder="Bước tiếp theo" />
           </Form.Item>
@@ -400,24 +364,6 @@ export function InquiryForm({
             {isEdit ? "Lưu" : "Tạo inquiry"}
           </Button>
           <Button onClick={() => router.back()}>Hủy</Button>
-          {isEdit &&
-            (isArchived ? (
-              <Button
-                icon={<UndoOutlined />}
-                loading={saving}
-                onClick={() => void restoreInquiry()}
-              >
-                Khôi phục
-              </Button>
-            ) : (
-              <Button
-                danger
-                icon={<EyeInvisibleOutlined />}
-                onClick={archiveInquiry}
-              >
-                Ẩn
-              </Button>
-            ))}
         </div>
       </Space>
     </Form>

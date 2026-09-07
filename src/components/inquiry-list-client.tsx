@@ -1,7 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useMemo, useState } from "react";
 import {
   App,
@@ -15,7 +14,6 @@ import {
   InputNumber,
   Select,
   Space,
-  Switch,
   Table,
   Tag,
   Typography,
@@ -24,14 +22,12 @@ import type { ColumnsType } from "antd/es/table";
 import {
   DownloadOutlined,
   EditOutlined,
-  EyeInvisibleOutlined,
   PlusOutlined,
-  UndoOutlined,
 } from "@ant-design/icons";
 import dayjs from "dayjs";
 import { createClient } from "@/lib/supabase/client";
 import type { Inquiry, InquiryStatus, NewExisting, Vendor } from "@/lib/types";
-import { STATUSES } from "@/lib/types";
+import { NOMINATED_STATUSES, STATUSES } from "@/lib/types";
 import { addDaysISO, formatUsd, todayISO } from "@/lib/utils";
 import { PageHeader } from "@/components/page-header";
 import { statusTagColor } from "@/lib/theme";
@@ -51,6 +47,7 @@ type QuickEdit = {
   item_name: string;
   brand?: string | null;
   item_code?: string | null;
+  reason_no_order?: string | null;
 };
 
 type QuickCreate = {
@@ -59,6 +56,7 @@ type QuickCreate = {
   brand?: string;
   item_code?: string;
   category?: string;
+  nominated_status?: string;
   status: InquiryStatus;
   new_existing: NewExisting;
   received_date: string;
@@ -67,6 +65,7 @@ type QuickCreate = {
   unit_price_usd?: number | null;
   monthly_projection?: number | null;
   owner?: string;
+  reason_no_order?: string;
 };
 
 const { useBreakpoint } = Grid;
@@ -77,12 +76,9 @@ export function InquiryListClient({
   defaultOwner,
   defaultFollowUpDays,
 }: Props) {
-  const router = useRouter();
-  const sp = useSearchParams();
-  const { message, modal } = App.useApp();
+  const { message } = App.useApp();
   const screens = useBreakpoint();
   const isMobile = !screens.md;
-  const showArchived = sp.get("archived") === "1";
 
   const [rows, setRows] = useState(initial);
   const [vendors, setVendors] = useState(initialVendors);
@@ -97,66 +93,39 @@ export function InquiryListClient({
     setVendors(initialVendors);
   }
 
+  const [q, setQ] = useState("");
+  const [status, setStatus] = useState<string | undefined>();
+  const [vendorId, setVendorId] = useState<string | undefined>();
+  const [focus, setFocus] = useState<string | undefined>();
+  const [sort, setSort] = useState<"newest" | "oldest">("newest");
+
   const [editRow, setEditRow] = useState<Inquiry | null>(null);
   const [creating, setCreating] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [listLoading, setListLoading] = useState(false);
   const [newVendorName, setNewVendorName] = useState("");
   const [editForm] = Form.useForm<QuickEdit>();
   const [createForm] = Form.useForm<QuickCreate>();
+  const editStatus = Form.useWatch("status", editForm);
+  const createStatus = Form.useWatch("status", createForm);
 
-  function setFilter(key: string, value?: string) {
-    const next = new URLSearchParams(sp.toString());
-    if (!value) next.delete(key);
-    else next.set(key, value);
-    // Clear focus filter noise when changing other filters so new rows stay visible
-    if (key !== "focus") next.delete("focus");
-    router.push(`/inquiries?${next.toString()}`);
-  }
+  const today = todayISO();
 
-  function clearFilters() {
-    router.push("/inquiries");
-  }
-
-  /** Client fetch — no full RSC reload when flipping archived toggle */
-  async function loadList(archived: boolean) {
-    setListLoading(true);
-    setEditRow(null);
-    const supabase = createClient();
-    let query = supabase
-      .from("inquiries")
-      .select("*, vendors(id, name)")
-      .order("created_at", { ascending: false });
-    query = archived
-      ? query.not("archived_at", "is", null)
-      : query.is("archived_at", null);
-
-    const status = sp.get("status");
-    const vendor = sp.get("vendor");
-    const owner = sp.get("owner");
-    if (status) query = query.eq("status", status);
-    if (vendor) query = query.eq("vendor_id", vendor);
-    if (owner) query = query.ilike("owner", `%${owner}%`);
-
-    const { data, error } = await query;
-    setListLoading(false);
-    if (error) {
-      message.error(error.message);
-      return;
-    }
-    let list = (data ?? []) as Inquiry[];
-    const q = sp.get("q")?.toLowerCase();
-    if (q) {
+  const filtered = useMemo(() => {
+    const needle = q.trim().toLowerCase();
+    let list = rows;
+    if (needle) {
       list = list.filter(
         (i) =>
-          i.item_name.toLowerCase().includes(q) ||
-          (i.brand ?? "").toLowerCase().includes(q) ||
-          (i.item_code ?? "").toLowerCase().includes(q) ||
-          (i.vendors?.name ?? "").toLowerCase().includes(q),
+          i.item_name.toLowerCase().includes(needle) ||
+          (i.brand ?? "").toLowerCase().includes(needle) ||
+          (i.item_code ?? "").toLowerCase().includes(needle) ||
+          (i.category ?? "").toLowerCase().includes(needle) ||
+          (i.owner ?? "").toLowerCase().includes(needle) ||
+          (i.vendors?.name ?? "").toLowerCase().includes(needle),
       );
     }
-    const focus = sp.get("focus");
-    const today = todayISO();
+    if (status) list = list.filter((i) => i.status === status);
+    if (vendorId) list = list.filter((i) => i.vendor_id === vendorId);
     if (focus === "due") {
       list = list.filter(
         (i) =>
@@ -172,11 +141,21 @@ export function InquiryListClient({
           i.next_follow_up_date < today,
       );
     }
-    setRows(list);
-    const next = new URLSearchParams(sp.toString());
-    if (archived) next.set("archived", "1");
-    else next.delete("archived");
-    router.replace(`/inquiries?${next.toString()}`, { scroll: false });
+    const sorted = [...list].sort((a, b) => {
+      const av = a.created_at;
+      const bv = b.created_at;
+      return sort === "newest" ? (av < bv ? 1 : -1) : av < bv ? -1 : 1;
+    });
+    return sorted;
+  }, [rows, q, status, vendorId, focus, sort, today]);
+
+  const hasFilters = Boolean(q || status || vendorId || focus);
+
+  function clearFilters() {
+    setQ("");
+    setStatus(undefined);
+    setVendorId(undefined);
+    setFocus(undefined);
   }
 
   const patch = useCallback(
@@ -208,7 +187,9 @@ export function InquiryListClient({
       brand: undefined,
       item_code: undefined,
       category: undefined,
+      nominated_status: undefined,
       estimated_amount: undefined,
+      reason_no_order: undefined,
     });
   }
 
@@ -222,6 +203,7 @@ export function InquiryListClient({
       item_name: row.item_name,
       brand: row.brand,
       item_code: row.item_code,
+      reason_no_order: row.reason_no_order,
     });
   }
 
@@ -265,6 +247,7 @@ export function InquiryListClient({
           brand: values.brand?.trim() || null,
           item_code: values.item_code?.trim() || null,
           category: values.category?.trim() || null,
+          nominated_status: values.nominated_status || null,
           status: values.status,
           new_existing: values.new_existing,
           received_date: values.received_date,
@@ -273,6 +256,10 @@ export function InquiryListClient({
           unit_price_usd: values.unit_price_usd ?? null,
           monthly_projection: values.monthly_projection ?? null,
           owner: values.owner?.trim() || null,
+          reason_no_order:
+            values.status === "No Order"
+              ? values.reason_no_order?.trim() || null
+              : null,
         })
         .select("*, vendors(id, name)")
         .single();
@@ -285,13 +272,9 @@ export function InquiryListClient({
       setRows((prev) => [row, ...prev.filter((r) => r.id !== row.id)]);
       setCreating(false);
       createForm.resetFields();
+      clearFilters();
+      setSort("newest");
       message.success("Đã tạo inquiry");
-      // Drop focus/status filters that would hide the new Pending row
-      if (sp.get("focus") || sp.get("status") || sp.get("q")) {
-        router.push("/inquiries");
-      } else {
-        router.refresh();
-      }
     } catch {
       /* validation */
     }
@@ -309,6 +292,10 @@ export function InquiryListClient({
         item_name: values.item_name,
         brand: values.brand || null,
         item_code: values.item_code || null,
+        reason_no_order:
+          values.status === "No Order"
+            ? values.reason_no_order || null
+            : null,
       });
       if (ok) {
         message.success("Đã lưu");
@@ -319,58 +306,20 @@ export function InquiryListClient({
     }
   }
 
-  function archiveRow(row: Inquiry) {
-    modal.confirm({
-      title: "Ẩn inquiry này?",
-      content: `${row.vendors?.name ?? ""} · ${row.item_name}. Có thể khôi phục trong mục Đã ẩn.`,
-      okText: "Ẩn",
-      okButtonProps: { danger: true },
-      cancelText: "Hủy",
-      onOk: async () => {
-        setSaving(true);
-        const supabase = createClient();
-        const { error } = await supabase
-          .from("inquiries")
-          .update({ archived_at: new Date().toISOString() })
-          .eq("id", row.id);
-        setSaving(false);
-        if (error) {
-          message.error(error.message);
-          return;
-        }
-        setRows((prev) => prev.filter((r) => r.id !== row.id));
-        setEditRow(null);
-        message.success("Đã ẩn");
-      },
-    });
-  }
-
-  async function restoreRow(row: Inquiry) {
-    setSaving(true);
-    const supabase = createClient();
-    const { error } = await supabase
-      .from("inquiries")
-      .update({ archived_at: null })
-      .eq("id", row.id);
-    setSaving(false);
-    if (error) {
-      message.error(error.message);
-      return;
-    }
-    setRows((prev) => prev.filter((r) => r.id !== row.id));
-    setEditRow(null);
-    message.success("Đã khôi phục");
-  }
-
   const vendorMap = useMemo(
     () => Object.fromEntries(vendors.map((v) => [v.id, v.name])),
     [vendors],
   );
 
-  const exportQs = sp.toString();
-  const hasFilters = Boolean(
-    sp.get("q") || sp.get("status") || sp.get("vendor") || sp.get("focus") || sp.get("owner"),
-  );
+  const exportHref = useMemo(() => {
+    const p = new URLSearchParams();
+    if (status) p.set("status", status);
+    if (vendorId) p.set("vendor", vendorId);
+    if (focus) p.set("focus", focus);
+    if (q.trim()) p.set("q", q.trim());
+    const s = p.toString();
+    return `/api/export${s ? `?${s}` : ""}`;
+  }, [status, vendorId, focus, q]);
 
   const filters = (
     <div
@@ -387,17 +336,17 @@ export function InquiryListClient({
     >
       <Input.Search
         allowClear
-        placeholder="Tìm item, brand, code…"
-        defaultValue={sp.get("q") ?? ""}
-        onSearch={(v) => setFilter("q", v || undefined)}
-        style={{ width: isMobile ? "100%" : 220 }}
+        placeholder="Tìm item code, RBO, brand, vendor…"
+        value={q}
+        onChange={(e) => setQ(e.target.value)}
+        style={{ width: isMobile ? "100%" : 260 }}
       />
       <Select
         allowClear
         placeholder="Status"
         style={{ width: isMobile ? "48%" : 140, flex: isMobile ? 1 : undefined }}
-        value={sp.get("status") || undefined}
-        onChange={(v) => setFilter("status", v)}
+        value={status}
+        onChange={setStatus}
         options={STATUSES.map((s) => ({ value: s, label: s }))}
       />
       <Select
@@ -406,24 +355,28 @@ export function InquiryListClient({
         optionFilterProp="label"
         placeholder="Vendor"
         style={{ width: isMobile ? "48%" : 180, flex: isMobile ? 1 : undefined }}
-        value={sp.get("vendor") || undefined}
-        onChange={(v) => setFilter("vendor", v)}
+        value={vendorId}
+        onChange={setVendorId}
         options={vendors.map((v) => ({ value: v.id, label: v.name }))}
       />
       <Select
         allowClear
         placeholder="Follow-up"
-        style={{ width: isMobile ? "100%" : 180 }}
-        value={sp.get("focus") || undefined}
-        onChange={(v) => {
-          const next = new URLSearchParams(sp.toString());
-          if (!v) next.delete("focus");
-          else next.set("focus", v);
-          router.push(`/inquiries?${next.toString()}`);
-        }}
+        style={{ width: isMobile ? "48%" : 180, flex: isMobile ? 1 : undefined }}
+        value={focus}
+        onChange={setFocus}
         options={[
           { value: "due", label: "Quá hạn / Hôm nay" },
           { value: "overdue", label: "Chỉ quá hạn" },
+        ]}
+      />
+      <Select
+        value={sort}
+        style={{ width: isMobile ? "48%" : 140, flex: isMobile ? 1 : undefined }}
+        onChange={setSort}
+        options={[
+          { value: "newest", label: "Newest" },
+          { value: "oldest", label: "Oldest" },
         ]}
       />
       {hasFilters && (
@@ -431,17 +384,6 @@ export function InquiryListClient({
           Xóa lọc
         </Button>
       )}
-      <Space size={8} style={{ marginLeft: "auto" }}>
-        <Typography.Text type="secondary" style={{ fontSize: 13 }}>
-          Đã ẩn
-        </Typography.Text>
-        <Switch
-          size="small"
-          checked={showArchived}
-          loading={listLoading}
-          onChange={(checked) => void loadList(checked)}
-        />
-      </Space>
     </div>
   );
 
@@ -469,9 +411,9 @@ export function InquiryListClient({
       ),
     },
     {
-      title: "Item",
+      title: "Item code",
       dataIndex: "item_name",
-      width: 200,
+      width: 180,
       ellipsis: true,
       onCell: (r: Inquiry) => ({
         record: r,
@@ -498,9 +440,9 @@ export function InquiryListClient({
       render: (v: string | null) => v || "-",
     },
     {
-      title: "Code",
+      title: "RBO code",
       dataIndex: "item_code",
-      width: 100,
+      width: 110,
       ellipsis: true,
       onCell: (r: Inquiry) => ({
         record: r,
@@ -579,38 +521,12 @@ export function InquiryListClient({
     },
     {
       title: "",
-      width: 88,
+      width: 48,
       fixed: "right" as const,
       render: (_: unknown, r: Inquiry) => (
-        <Space size={0}>
-          <Link href={`/inquiries/${r.id}`} aria-label="Chi tiết">
-            <Button type="text" size="small" icon={<EditOutlined />} />
-          </Link>
-          {showArchived ? (
-            <Button
-              type="text"
-              size="small"
-              icon={<UndoOutlined />}
-              aria-label="Khôi phục"
-              onClick={(e) => {
-                e.stopPropagation();
-                void restoreRow(r);
-              }}
-            />
-          ) : (
-            <Button
-              type="text"
-              size="small"
-              danger
-              icon={<EyeInvisibleOutlined />}
-              aria-label="Ẩn"
-              onClick={(e) => {
-                e.stopPropagation();
-                archiveRow(r);
-              }}
-            />
-          )}
-        </Space>
+        <Link href={`/inquiries/${r.id}`} aria-label="Chi tiết">
+          <Button type="text" size="small" icon={<EditOutlined />} />
+        </Link>
       ),
     },
   ] as ColumnsType<Inquiry>;
@@ -649,35 +565,40 @@ export function InquiryListClient({
             options={vendors.map((v) => ({ value: v.id, label: v.name }))}
           />
         </Form.Item>
-        <Space.Compact style={{ width: "100%", marginTop: -8, marginBottom: 16 }}>
+        <Space.Compact style={{ width: "100%", marginBottom: 16 }}>
           <Input
             placeholder="Tạo vendor mới"
             value={newVendorName}
             onChange={(e) => setNewVendorName(e.target.value)}
-            onPressEnter={createVendorInline}
+            onPressEnter={() => void createVendorInline()}
           />
-          <Button loading={saving} onClick={createVendorInline}>
+          <Button loading={saving} onClick={() => void createVendorInline()}>
             Thêm
           </Button>
         </Space.Compact>
-
         <Form.Item
-          label="Item"
+          label="Item code"
           name="item_name"
-          rules={[{ required: true, message: "Nhập tên item" }]}
+          rules={[{ required: true, message: "Nhập item code" }]}
         >
-          <Input placeholder="Tên hàng" autoFocus />
+          <Input />
         </Form.Item>
         <Space style={{ width: "100%" }} styles={{ item: { flex: 1 } }}>
           <Form.Item label="Brand" name="brand" style={{ flex: 1, marginBottom: 16 }}>
             <Input />
           </Form.Item>
-          <Form.Item label="Code" name="item_code" style={{ flex: 1, marginBottom: 16 }}>
+          <Form.Item label="RBO code" name="item_code" style={{ flex: 1, marginBottom: 16 }}>
             <Input />
           </Form.Item>
         </Space>
-        <Form.Item label="Category" name="category">
+        <Form.Item label="Item type" name="category">
           <Input />
+        </Form.Item>
+        <Form.Item label="Nominated Status" name="nominated_status">
+          <Select
+            allowClear
+            options={NOMINATED_STATUSES.map((s) => ({ value: s, label: s }))}
+          />
         </Form.Item>
         <Space style={{ width: "100%" }} styles={{ item: { flex: 1 } }}>
           <Form.Item label="Status" name="status" rules={[{ required: true }]} style={{ flex: 1 }}>
@@ -692,11 +613,19 @@ export function InquiryListClient({
             />
           </Form.Item>
         </Space>
+        {createStatus === "No Order" && (
+          <Form.Item
+            label="Reason for no order"
+            name="reason_no_order"
+            rules={[{ required: true, message: "Nhập lý do" }]}
+          >
+            <Input.TextArea rows={2} />
+          </Form.Item>
+        )}
         <Space style={{ width: "100%" }} styles={{ item: { flex: 1 } }}>
           <Form.Item
-            label="Ngày nhận"
+            label="Received"
             name="received_date"
-            rules={[{ required: true }]}
             getValueProps={(v) => ({ value: v ? dayjs(v) : null })}
             getValueFromEvent={(d) => (d ? d.format("YYYY-MM-DD") : null)}
             style={{ flex: 1 }}
@@ -747,29 +676,6 @@ export function InquiryListClient({
           </Button>
         </Space>
       }
-      footer={
-        editRow ? (
-          showArchived ? (
-            <Button
-              block
-              icon={<UndoOutlined />}
-              loading={saving}
-              onClick={() => void restoreRow(editRow)}
-            >
-              Khôi phục
-            </Button>
-          ) : (
-            <Button
-              block
-              danger
-              icon={<EyeInvisibleOutlined />}
-              onClick={() => archiveRow(editRow)}
-            >
-              Ẩn inquiry
-            </Button>
-          )
-        ) : null
-      }
     >
       {editRow && (
         <Form form={editForm} layout="vertical" requiredMark={false}>
@@ -777,9 +683,9 @@ export function InquiryListClient({
             {editRow.vendors?.name ?? vendorMap[editRow.vendor_id]}
           </Typography.Text>
           <Form.Item
-            label="Item"
+            label="Item code"
             name="item_name"
-            rules={[{ required: true, message: "Nhập item" }]}
+            rules={[{ required: true, message: "Nhập item code" }]}
           >
             <Input />
           </Form.Item>
@@ -787,13 +693,22 @@ export function InquiryListClient({
             <Form.Item label="Brand" name="brand" style={{ flex: 1 }}>
               <Input />
             </Form.Item>
-            <Form.Item label="Code" name="item_code" style={{ flex: 1 }}>
+            <Form.Item label="RBO code" name="item_code" style={{ flex: 1 }}>
               <Input />
             </Form.Item>
           </Space>
           <Form.Item label="Status" name="status" rules={[{ required: true }]}>
             <Select options={STATUSES.map((s) => ({ value: s, label: s }))} />
           </Form.Item>
+          {editStatus === "No Order" && (
+            <Form.Item
+              label="Reason for no order"
+              name="reason_no_order"
+              rules={[{ required: true, message: "Nhập lý do" }]}
+            >
+              <Input.TextArea rows={2} />
+            </Form.Item>
+          )}
           <Form.Item
             label="Next follow-up"
             name="next_follow_up_date"
@@ -816,32 +731,27 @@ export function InquiryListClient({
   return (
     <div>
       <PageHeader
-        title={showArchived ? "Đã ẩn" : "Inquiries"}
+        title="Inquiries"
         description={
           isMobile
-            ? `${rows.length} bản ghi · chạm để sửa`
-            : `${rows.length} bản ghi · click ô để sửa như Excel`
+            ? `${filtered.length} / ${rows.length} · chạm để sửa`
+            : `${filtered.length} / ${rows.length} · click ô để sửa như Excel`
         }
         extra={
           <>
-            <Button
-              icon={<DownloadOutlined />}
-              href={`/api/export${exportQs ? `?${exportQs}` : ""}`}
-            >
+            <Button icon={<DownloadOutlined />} href={exportHref}>
               Export
             </Button>
-            {!showArchived && (
-              <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
-                Inquiry mới
-              </Button>
-            )}
+            <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
+              Inquiry mới
+            </Button>
           </>
         }
       />
 
       {filters}
 
-      {rows.length === 0 && !listLoading ? (
+      {filtered.length === 0 ? (
         <div
           style={{
             background: "#fff",
@@ -853,14 +763,12 @@ export function InquiryListClient({
           <Empty
             image={Empty.PRESENTED_IMAGE_SIMPLE}
             description={
-              showArchived
-                ? "Không có inquiry đã ẩn"
-                : hasFilters
-                  ? "Không có bản ghi khớp bộ lọc"
-                  : "Chưa có inquiry — thêm dòng đầu tiên"
+              hasFilters
+                ? "Không có bản ghi khớp bộ lọc"
+                : "Chưa có inquiry — thêm dòng đầu tiên"
             }
           >
-            {showArchived ? null : hasFilters ? (
+            {hasFilters ? (
               <Button onClick={clearFilters}>Xóa lọc</Button>
             ) : (
               <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
@@ -871,57 +779,47 @@ export function InquiryListClient({
         </div>
       ) : isMobile ? (
         <Space orientation="vertical" size={8} style={{ width: "100%" }}>
-          {listLoading ? (
-            <div
+          {filtered.map((r) => (
+            <button
+              key={r.id}
+              type="button"
+              onClick={() => openEdit(r)}
               style={{
-                padding: 32,
-                textAlign: "center",
+                display: "block",
+                width: "100%",
+                textAlign: "left",
+                padding: 14,
                 background: "#fff",
-                borderRadius: 10,
                 border: "1px solid #E2E8F0",
-                color: "#94A3B8",
-                fontSize: 13,
+                borderRadius: 10,
+                cursor: "pointer",
               }}
             >
-              Đang tải…
-            </div>
-          ) : (
-            rows.map((r) => (
-              <button
-                key={r.id}
-                type="button"
-                onClick={() => openEdit(r)}
-                style={{
-                  display: "block",
-                  width: "100%",
-                  textAlign: "left",
-                  padding: 14,
-                  background: "#fff",
-                  border: "1px solid #E2E8F0",
-                  borderRadius: 10,
-                  cursor: "pointer",
-                }}
-              >
-                <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
-                  <Typography.Text strong style={{ fontSize: 14 }}>
-                    {r.vendors?.name ?? "-"}
-                  </Typography.Text>
-                  <Tag color={statusTagColor[r.status]} style={{ margin: 0 }}>
-                    {r.status}
-                  </Tag>
-                </div>
-                <Typography.Text style={{ display: "block", marginTop: 4, fontSize: 13 }}>
-                  {r.item_name}
-                  {r.brand ? ` · ${r.brand}` : ""}
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
+                <Typography.Text strong style={{ fontSize: 14 }}>
+                  {r.vendors?.name ?? "-"}
                 </Typography.Text>
-                <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                  {r.received_date} · FU {r.next_follow_up_date ?? "-"} ·{" "}
-                  {formatUsd(r.estimated_amount)}
-                  {r.owner ? ` · ${r.owner}` : ""}
+                <Tag color={statusTagColor[r.status]} style={{ margin: 0 }}>
+                  {r.status}
+                </Tag>
+              </div>
+              <Typography.Text style={{ display: "block", marginTop: 4, fontSize: 13 }}>
+                {r.item_name}
+                {r.brand ? ` · ${r.brand}` : ""}
+                {r.item_code ? ` · ${r.item_code}` : ""}
+              </Typography.Text>
+              <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                {r.received_date} · FU {r.next_follow_up_date ?? "-"} ·{" "}
+                {formatUsd(r.estimated_amount)}
+                {r.owner ? ` · ${r.owner}` : ""}
+              </Typography.Text>
+              {r.status === "No Order" && r.reason_no_order ? (
+                <Typography.Text type="secondary" style={{ fontSize: 12, display: "block", marginTop: 4 }}>
+                  Reason: {r.reason_no_order}
                 </Typography.Text>
-              </button>
-            ))
-          )}
+              ) : null}
+            </button>
+          ))}
         </Space>
       ) : (
         <div
@@ -934,8 +832,7 @@ export function InquiryListClient({
         >
           <Table
             rowKey="id"
-            loading={listLoading}
-            dataSource={rows}
+            dataSource={filtered}
             size="middle"
             scroll={{ x: 1200 }}
             pagination={{
@@ -976,93 +873,88 @@ function EditableCell({
   ...rest
 }: CellProps & React.TdHTMLAttributes<HTMLTableCellElement>) {
   const [editing, setEditing] = useState(false);
-  const [val, setVal] = useState<unknown>(null);
+  const [value, setValue] = useState<string | number | null>(null);
 
   if (!editable || !record || !dataIndex || !onSave) {
     return <td {...rest}>{children}</td>;
   }
 
-  function start() {
-    setVal(record![dataIndex!]);
-    setEditing(true);
-  }
-
-  async function commit(next?: unknown) {
-    const value = next !== undefined ? next : val;
+  async function commit(next: string | number | null) {
     setEditing(false);
-    const current = record![dataIndex!];
-    if (value === current || (value == null && current == null)) return;
-    await onSave!(value as never);
+    const prev = record![dataIndex!] as string | number | null;
+    if (next === prev || (next === "" && !prev)) return;
+    await onSave!(next as never);
   }
 
-  let editor: React.ReactNode = null;
   if (editing) {
+    let input: React.ReactNode;
     if (inputType === "status") {
-      editor = (
+      input = (
         <Select
           autoFocus
           open
           size="small"
           style={{ width: "100%" }}
-          value={val as string}
+          value={value as string}
           options={STATUSES.map((s) => ({ value: s, label: s }))}
-          onChange={(v) => commit(v)}
+          onChange={(v) => void commit(v)}
           onBlur={() => setEditing(false)}
         />
       );
     } else if (inputType === "date") {
-      editor = (
+      input = (
         <DatePicker
           autoFocus
           size="small"
           style={{ width: "100%" }}
           format="DD/MM/YYYY"
-          value={val ? dayjs(val as string) : null}
-          onChange={(d) => commit(d ? d.format("YYYY-MM-DD") : null)}
+          value={value ? dayjs(String(value)) : null}
+          onChange={(d) => void commit(d ? d.format("YYYY-MM-DD") : null)}
           onOpenChange={(open) => {
             if (!open) setEditing(false);
           }}
         />
       );
     } else if (inputType === "number") {
-      editor = (
+      input = (
         <InputNumber
           autoFocus
           size="small"
           style={{ width: "100%" }}
-          value={val as number | null}
-          onChange={(v) => setVal(v)}
-          onPressEnter={() => commit()}
-          onBlur={() => commit()}
+          min={0}
+          value={value as number | null}
+          onChange={(v) => setValue(v)}
+          onPressEnter={() => void commit(value)}
+          onBlur={() => void commit(value)}
+          disabled={saving}
         />
       );
     } else {
-      editor = (
+      input = (
         <Input
           autoFocus
           size="small"
-          value={(val as string) ?? ""}
-          onChange={(e) => setVal(e.target.value)}
-          onPressEnter={() => commit()}
-          onBlur={() => commit()}
+          value={(value as string) ?? ""}
+          onChange={(e) => setValue(e.target.value)}
+          onPressEnter={() => void commit(value)}
+          onBlur={() => void commit(value)}
+          disabled={saving}
         />
       );
     }
+    return <td {...rest}>{input}</td>;
   }
 
   return (
     <td
       {...rest}
       onClick={() => {
-        if (!editing && !saving) start();
+        setValue((record[dataIndex] as string | number | null) ?? null);
+        setEditing(true);
       }}
-      style={{
-        ...rest.style,
-        cursor: editing ? "default" : "cell",
-        background: editing ? "#F8FAFC" : undefined,
-      }}
+      style={{ ...rest.style, cursor: "cell" }}
     >
-      {editing ? editor : children}
+      {children}
     </td>
   );
 }

@@ -68,3 +68,11 @@ export const STATUSES: InquiryStatus[] = [
   "Lost",
   "No Order",
 ];
+
+export const NOMINATED_STATUSES = [
+  "Exclusive",
+  "Share-nominated",
+  "Local development",
+] as const;
+
+export type NominatedStatus = (typeof NOMINATED_STATUSES)[number];
