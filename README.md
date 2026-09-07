@@ -1,36 +1,24 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# CRM Inquiry Tracker
 
-## Getting Started
+Theo dõi inquiry / báo giá theo Vendor, Status, follow-up Telegram, export Excel.
 
-First, run the development server:
+## Stack
+
+- Next.js + Supabase Auth/Postgres
+- Telegram bot (kết nối bằng link Start)
+- Docker trên VPS
+
+## Setup nhanh
+
+1. Copy `.env.example` → `.env` và điền Supabase + secrets.
+2. Chạy SQL trong `supabase/migrations/001_init.sql` trên Supabase.
+3. Tạo user Auth (email/password) trong Supabase Dashboard.
+4. Local: `npm i && npm run dev`
+5. Production: `docker compose up -d --build`
+6. Cron mỗi 15 phút:
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+*/15 * * * * curl -fsS -X POST -H "Authorization: Bearer $CRON_SECRET" "$APP_URL/api/cron/reminders"
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
-
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
-
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
-
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+7. Trong app → **Cài đặt**: dán Bot Token (BotFather) → **Kết nối Telegram** → Start.
