@@ -37,7 +37,6 @@ import { markDaFu } from "@/lib/mark-da-fu";
 type Props = {
   inquiries: Inquiry[];
   vendors: Vendor[];
-  defaultOwner: string;
   defaultFollowUpDays: number;
 };
 
@@ -74,8 +73,7 @@ const { useBreakpoint } = Grid;
 
 export function InquiryListClient({
   inquiries: initial,
-  vendors: initialVendors,
-  defaultOwner,
+  vendors:   initialVendors,
   defaultFollowUpDays,
 }: Props) {
   const { message } = App.useApp();
@@ -120,6 +118,7 @@ export function InquiryListClient({
   const [newVendorName, setNewVendorName] = useState("");
   const [editForm] = Form.useForm<QuickEdit>();
   const [createForm] = Form.useForm<QuickCreate>();
+  const [quickItems, setQuickItems] = useState<{ brand?: string; rbo_code?: string; quantity?: number; price?: number; currency?: "USD" | "VND"; incoterm?: string }[]>([{ currency: "USD" }]);
   const editStatus = Form.useWatch("status", editForm);
   const createStatus = Form.useWatch("status", createForm);
 
@@ -135,7 +134,9 @@ export function InquiryListClient({
           (i.brand ?? "").toLowerCase().includes(needle) ||
           (i.item_code ?? "").toLowerCase().includes(needle) ||
           (i.category ?? "").toLowerCase().includes(needle) ||
-          (i.owner ?? "").toLowerCase().includes(needle) ||
+          (i.inquiry_items ?? []).some((item) =>
+            [item.brand, item.rbo_code, item.incoterm].some((value) => (value ?? "").toLowerCase().includes(needle)),
+          ) ||
           (i.vendors?.name ?? "").toLowerCase().includes(needle),
       );
     }
@@ -264,13 +265,13 @@ export function InquiryListClient({
 
   function openCreate() {
     setCreating(true);
+    setQuickItems([{ currency: "USD" }]);
     createForm.setFieldsValue({
       vendor_id: vendors[0]?.id,
       status: "Pending quotation",
       new_existing: "New",
       received_date: todayISO(),
       next_follow_up_date: addDaysISO(defaultFollowUpDays),
-      owner: defaultOwner || undefined,
       item_name: undefined,
       brand: undefined,
       item_code: undefined,
@@ -288,7 +289,6 @@ export function InquiryListClient({
       status: row.status,
       next_follow_up_date: row.next_follow_up_date,
       estimated_amount: row.estimated_amount,
-      owner: row.owner,
       item_name: row.item_name,
       brand: row.brand,
       item_code: row.item_code,
@@ -322,19 +322,24 @@ export function InquiryListClient({
       const values = await createForm.validateFields();
       setSaving(true);
       const supabase = createClient();
-      const amount =
-        values.estimated_amount ??
-        (values.monthly_projection != null && values.unit_price_usd != null
-          ? +(Number(values.monthly_projection) * Number(values.unit_price_usd)).toFixed(2)
-          : null);
+      const items = quickItems.filter((item) => item.brand || item.rbo_code || item.quantity != null || item.price != null);
+      if (!items.length) {
+        setSaving(false);
+        message.error("Thêm ít nhất một dòng sản phẩm");
+        return;
+      }
+      const first = items[0];
+      const amount = first.currency === "USD" && first.quantity != null && first.price != null
+        ? +(Number(first.quantity) * Number(first.price)).toFixed(2)
+        : null;
 
       const { data, error } = await supabase
         .from("inquiries")
         .insert({
           vendor_id: values.vendor_id,
-          item_name: values.item_name.trim(),
-          brand: values.brand?.trim() || null,
-          item_code: values.item_code?.trim() || null,
+          item_name: first.rbo_code || first.brand || "Multiple items",
+          brand: first.brand?.trim() || null,
+          item_code: first.rbo_code?.trim() || null,
           category: values.category?.trim() || null,
           nominated_status: values.nominated_status || null,
           status: values.status,
@@ -342,9 +347,8 @@ export function InquiryListClient({
           received_date: values.received_date,
           next_follow_up_date: values.next_follow_up_date,
           estimated_amount: amount,
-          unit_price_usd: values.unit_price_usd ?? null,
-          monthly_projection: values.monthly_projection ?? null,
-          owner: values.owner?.trim() || null,
+          unit_price_usd: first.currency === "USD" ? first.price ?? null : null,
+          monthly_projection: first.quantity ?? null,
           reason_no_order:
             values.status === "Cancel"
               ? values.reason_no_order?.trim() || null
@@ -358,9 +362,24 @@ export function InquiryListClient({
         return;
       }
       const row = data as Inquiry;
+      const { error: itemError } = await supabase.from("inquiry_items").insert(items.map((item, index) => ({
+        inquiry_id: row.id,
+        sort_order: index,
+        brand: item.brand || null,
+        rbo_code: item.rbo_code || null,
+        quantity: item.quantity ?? null,
+        price: item.price ?? null,
+        currency: item.currency ?? "USD",
+        incoterm: item.incoterm || null,
+      })));
+      if (itemError) {
+        message.error(itemError.message);
+        return;
+      }
       setRows((prev) => [row, ...prev.filter((r) => r.id !== row.id)]);
       setCreating(false);
       createForm.resetFields();
+      setQuickItems([{ currency: "USD" }]);
       clearFilters();
       setSort("newest");
       message.success("Đã tạo inquiry");
@@ -377,7 +396,6 @@ export function InquiryListClient({
         status: values.status,
         next_follow_up_date: values.next_follow_up_date,
         estimated_amount: values.estimated_amount,
-        owner: values.owner || null,
         item_name: values.item_name,
         brand: values.brand || null,
         item_code: values.item_code || null,
@@ -597,20 +615,6 @@ export function InquiryListClient({
       ),
     },
     {
-      title: "Owner",
-      dataIndex: "owner",
-      width: 100,
-      onCell: (r: Inquiry) => ({
-        record: r,
-        dataIndex: "owner" as const,
-        editable: true,
-        inputType: "text" as const,
-        saving: saving || busyIds.has(r.id),
-        onSave: (v: string) => patch(r.id, { owner: v || null }),
-      }),
-      render: (v: string | null) => v || "-",
-    },
-    {
       title: "",
       width: 120,
       fixed: "right" as const,
@@ -670,13 +674,23 @@ export function InquiryListClient({
             Thêm
           </Button>
         </Space.Compact>
-        <Form.Item
-          label="Item code"
-          name="item_name"
-          rules={[{ required: true, message: "Nhập item code" }]}
-        >
-          <Input />
-        </Form.Item>
+        <Typography.Text strong>Các mã hàng & giá cả</Typography.Text>
+        {quickItems.map((item, index) => (
+          <Space key={index} direction="vertical" style={{ width: "100%", marginTop: 8, padding: 8, border: "1px solid #E2E8F0", borderRadius: 8 }}>
+            <Space.Compact style={{ width: "100%" }}>
+              <Input placeholder="Brand" value={item.brand} onChange={(e) => setQuickItems((all) => all.map((x, i) => i === index ? { ...x, brand: e.target.value } : x))} />
+              <Input placeholder="RBO code" value={item.rbo_code} onChange={(e) => setQuickItems((all) => all.map((x, i) => i === index ? { ...x, rbo_code: e.target.value } : x))} />
+            </Space.Compact>
+            <Space.Compact style={{ width: "100%" }}>
+              <InputNumber placeholder="Quantity" min={0} value={item.quantity} onChange={(value) => setQuickItems((all) => all.map((x, i) => i === index ? { ...x, quantity: value ?? undefined } : x))} style={{ width: "25%" }} />
+              <InputNumber placeholder="Price" min={0} value={item.price} onChange={(value) => setQuickItems((all) => all.map((x, i) => i === index ? { ...x, price: value ?? undefined } : x))} style={{ width: "25%" }} />
+              <Select value={item.currency ?? "USD"} options={[{ value: "USD" }, { value: "VND" }]} onChange={(value) => setQuickItems((all) => all.map((x, i) => i === index ? { ...x, currency: value } : x))} style={{ width: "25%" }} />
+              <Input placeholder="Incoterm" value={item.incoterm} onChange={(e) => setQuickItems((all) => all.map((x, i) => i === index ? { ...x, incoterm: e.target.value } : x))} style={{ width: "25%" }} />
+            </Space.Compact>
+            <Button type="link" danger onClick={() => setQuickItems((all) => all.filter((_, i) => i !== index))}>Xóa dòng</Button>
+          </Space>
+        ))}
+        <Button type="dashed" onClick={() => setQuickItems((all) => [...all, { currency: "USD" }])} style={{ marginTop: 8 }}>+ Thêm dòng</Button>
         <Space style={{ width: "100%" }} styles={{ item: { flex: 1 } }}>
           <Form.Item label="Brand" name="brand" style={{ flex: 1, marginBottom: 16 }}>
             <Input />
@@ -739,9 +753,6 @@ export function InquiryListClient({
         <Space style={{ width: "100%" }} styles={{ item: { flex: 1 } }}>
           <Form.Item label="Est. $" name="estimated_amount" style={{ flex: 1 }}>
             <InputNumber style={{ width: "100%" }} min={0} prefix="$" />
-          </Form.Item>
-          <Form.Item label="Owner" name="owner" style={{ flex: 1 }}>
-            <Input />
           </Form.Item>
         </Space>
       </Form>
@@ -814,9 +825,6 @@ export function InquiryListClient({
           </Form.Item>
           <Form.Item label="Est. Amount (USD)" name="estimated_amount">
             <InputNumber style={{ width: "100%" }} min={0} prefix="$" />
-          </Form.Item>
-          <Form.Item label="Owner" name="owner">
-            <Input />
           </Form.Item>
         </Form>
       )}
@@ -903,7 +911,6 @@ export function InquiryListClient({
               <Typography.Text type="secondary" style={{ fontSize: 12 }}>
                 {r.received_date} · FU {r.next_follow_up_date ?? "-"} ·{" "}
                 {formatUsd(r.estimated_amount)}
-                {r.owner ? ` · ${r.owner}` : ""}
               </Typography.Text>
               {r.status === "Cancel" && r.reason_no_order ? (
                 <Typography.Text type="secondary" style={{ fontSize: 12, display: "block", marginTop: 4 }}>

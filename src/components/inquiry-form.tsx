@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   App,
@@ -74,6 +74,15 @@ export function InquiryForm({
   const [newVendorName, setNewVendorName] = useState("");
   const [saving, setSaving] = useState(false);
   const status = Form.useWatch("status", form);
+
+  useEffect(() => {
+    if (status === "Quoted" && !form.getFieldValue("quoted_date")) {
+      form.setFieldValue("quoted_date", dayjs());
+    }
+    if (status === "1st Order Plan" && !form.getFieldValue("first_order_date_plan")) {
+      form.setFieldValue("first_order_date_plan", dayjs());
+    }
+  }, [form, status]);
 
   async function createVendor() {
     const name = newVendorName.trim();

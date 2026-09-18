@@ -12,7 +12,7 @@ export default async function VendorDetailPage({ params }: Props) {
     supabase.from("vendors").select("*").eq("id", id).maybeSingle(),
     supabase
       .from("inquiries")
-      .select("*")
+      .select("*, inquiry_items(*)")
       .eq("vendor_id", id)
       .is("archived_at", null)
       .order("received_date", { ascending: false }),

@@ -102,6 +102,11 @@ export function VendorListClient({ vendors, stats }: Props) {
                     <Typography.Text type="secondary" style={{ display: "block", marginTop: 8 }}>
                       {s.items.length} dòng sản phẩm
                     </Typography.Text>
+                    {s.items.slice(0, 3).map((item) => (
+                      <Typography.Text key={item.id} type="secondary" style={{ display: "block", fontSize: 12 }}>
+                        {item.brand || "-"} · {item.rbo_code || "-"} · {item.quantity ?? "-"} · {item.price ?? "-"} {item.currency} · {item.incoterm || "-"}
+                      </Typography.Text>
+                    ))}
                     <div
                       style={{
                         marginTop: 8,
