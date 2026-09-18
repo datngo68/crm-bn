@@ -5,8 +5,9 @@ import { useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   App,
+  Badge,
   Button,
-  Collapse,
+  Card,
   DatePicker,
   Drawer,
   Empty,
@@ -22,9 +23,13 @@ import {
 } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import {
+  CheckCircleOutlined,
+  ClockCircleOutlined,
   DownloadOutlined,
   EditOutlined,
+  InboxOutlined,
   PlusOutlined,
+  WarningOutlined,
 } from "@ant-design/icons";
 import dayjs from "dayjs";
 import { createClient } from "@/lib/supabase/client";
@@ -480,6 +485,16 @@ export function InquiryListClient({
     }
   }
 
+  const workspaceStats = useMemo(() => {
+    const followUpRows = rows.filter((row) => row.status === "Pending quotation" || row.status === "Follow Up");
+    return {
+      inquiries: filtered.length,
+      vendors: new Set(filtered.map((row) => row.vendor_id)).size,
+      followUps: followUpRows.filter((row) => isDueOrOverdue(rowFollowUpDate(row), today)).length,
+      overdue: followUpRows.filter((row) => isOverdue(rowFollowUpDate(row), today)).length,
+    };
+  }, [filtered, rows, today]);
+
   const exportHref = useMemo(() => {
     const p = new URLSearchParams();
     if (status) p.set("status", status);
@@ -491,18 +506,18 @@ export function InquiryListClient({
   }, [status, vendorId, focus, q]);
 
   const filters = (
-    <div
-      style={{
-        display: "flex",
-        flexWrap: "wrap",
-        gap: 8,
-        marginBottom: 16,
-        padding: 12,
-        background: "#fff",
-        border: "1px solid #E2E8F0",
-        borderRadius: 10,
-      }}
+    <Card
+      size="small"
+      bordered={false}
+      style={{ marginBottom: 18, background: "#fff", boxShadow: "0 8px 24px rgba(15, 23, 42, .05)" }}
+      bodyStyle={{ padding: 14 }}
     >
+      <Space direction="vertical" size={12} style={{ width: "100%" }}>
+        <Space wrap style={{ width: "100%", justifyContent: "space-between" }}>
+          <Typography.Text strong style={{ fontSize: 13 }}>Bộ lọc công việc</Typography.Text>
+          <Typography.Text type="secondary" style={{ fontSize: 12 }}>Ưu tiên xử lý các inquiry đến hạn</Typography.Text>
+        </Space>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
       <Input.Search
         allowClear
         placeholder="Tìm item code, RBO, brand, vendor…"
@@ -548,12 +563,14 @@ export function InquiryListClient({
           { value: "oldest", label: "Oldest" },
         ]}
       />
-      {hasFilters && (
-        <Button type="link" onClick={clearFilters}>
-          Xóa lọc
-        </Button>
-      )}
-    </div>
+          {hasFilters && (
+            <Button type="link" onClick={clearFilters}>
+              Xóa lọc
+            </Button>
+          )}
+        </div>
+      </Space>
+    </Card>
   );
 
   const desktopColumns = [
@@ -904,11 +921,7 @@ export function InquiryListClient({
     <div>
       <PageHeader
         title="Inquiries"
-        description={
-          isMobile
-            ? `${filtered.length} / ${rows.length} · chọn Sửa để chỉnh sửa`
-            : `${filtered.length} / ${rows.length} · click ô để sửa như Excel`
-        }
+        description="Một nơi để biết vendor nào cần phản hồi tiếp theo"
         extra={
           <>
             <Button icon={<DownloadOutlined />} href={exportHref}>
@@ -920,6 +933,19 @@ export function InquiryListClient({
           </>
         }
       />
+
+      <div className="inquiry-workspace-summary">
+        <div className="inquiry-summary-lead">
+          <span className="inquiry-summary-kicker">WORK QUEUE</span>
+          <strong>{workspaceStats.followUps ? `${workspaceStats.followUps} việc cần xử lý` : "Không có việc đến hạn"}</strong>
+          <span>{workspaceStats.inquiries} inquiry từ {workspaceStats.vendors} vendor đang hiển thị</span>
+        </div>
+        <div className="inquiry-summary-metrics">
+          <div><InboxOutlined /><strong>{workspaceStats.inquiries}</strong><span>inquiry</span></div>
+          <div><ClockCircleOutlined /><strong>{workspaceStats.followUps}</strong><span>đến hạn</span></div>
+          <div className={workspaceStats.overdue ? "is-danger" : ""}><WarningOutlined /><strong>{workspaceStats.overdue}</strong><span>quá hạn</span></div>
+        </div>
+      </div>
 
       {filters}
 
@@ -997,33 +1023,38 @@ export function InquiryListClient({
           ))}
         </Space>
       ) : (
-        <Collapse
-          items={groupedByVendor.map((group) => ({
-            key: group.vendor,
-            label: (
-              <Space>
-                <Typography.Text strong>{group.vendor}</Typography.Text>
-                <Tag>{group.inquiries.length} inquiry</Tag>
-                <Typography.Text type="secondary">
-                  {group.inquiries.reduce((total, row) => total + (row.inquiry_items?.length ?? 0), 0)} dòng sản phẩm
-                </Typography.Text>
-              </Space>
-            ),
-            children: (
-              <Table
-                rowKey="id"
-                dataSource={group.inquiries}
-                size="middle"
-                scroll={{ x: 1200 }}
-                pagination={{ pageSize: 10, showSizeChanger: true }}
-                components={{ body: { cell: EditableCell } }}
-                columns={desktopColumns}
-              />
-            ),
-          }))}
-          defaultActiveKey={groupedByVendor.map((group) => group.vendor)}
-          bordered
-        />
+        <div className="inquiry-vendor-stack">
+          {groupedByVendor.map((group) => {
+            const dueCount = group.inquiries.filter((row) => isDueOrOverdue(rowFollowUpDate(row), today)).length;
+            const itemCount = group.inquiries.reduce((total, row) => total + (row.inquiry_items?.length ?? 0), 0);
+            return (
+              <section className={`inquiry-vendor-card${dueCount ? " has-due" : ""}`} key={group.vendor}>
+                <div className="inquiry-vendor-heading">
+                  <div>
+                    <span className="inquiry-vendor-kicker">VENDOR</span>
+                    <Typography.Title level={5} style={{ margin: "3px 0 0" }}>{group.vendor}</Typography.Title>
+                  </div>
+                  <div className="inquiry-vendor-meta">
+                    <span>{group.inquiries.length} inquiry</span>
+                    <span>{itemCount} dòng sản phẩm</span>
+                    {dueCount ? <Badge status="warning" text={`${dueCount} cần xử lý`} /> : <Badge status="success" text="Đang ổn" />}
+                  </div>
+                </div>
+                <div className="inquiry-vendor-table">
+                  <Table
+                    rowKey="id"
+                    dataSource={group.inquiries}
+                    size="middle"
+                    scroll={{ x: 1200 }}
+                    pagination={{ pageSize: 10, showSizeChanger: true }}
+                    components={{ body: { cell: EditableCell } }}
+                    columns={desktopColumns}
+                  />
+                </div>
+              </section>
+            );
+          })}
+        </div>
       )}
 
       {createDrawer}
