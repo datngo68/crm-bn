@@ -26,6 +26,9 @@ function render(query) {
     dirty = false;
     result = runInNewContext(code, {
       STATUSES: exports.STATUSES,
+      followUpDateForStatus: (status, inquiry) => status === "Follow Up" ? inquiry.follow_up_date : status === "Pending quotation" ? inquiry.next_follow_up_date : null,
+      isDueOrOverdue: (date, today) => Boolean(date && date <= today),
+      isOverdue: (date, today) => Boolean(date && date < today),
       useSearchParams: () => new URLSearchParams(query),
       useState(initial) {
         const slot = index++;
@@ -72,6 +75,9 @@ function renderActions() {
   const result = runInNewContext(actionCode, {
     exports: {}, require: () => ({}),
     rows, editRow, today: "2026-09-07", defaultFollowUpDays: 3,
+    followUpDateForStatus: (status, inquiry) => status === "Follow Up" ? inquiry.follow_up_date : status === "Pending quotation" ? inquiry.next_follow_up_date : null,
+    isDueOrOverdue: (date, today) => Boolean(date && date <= today),
+    isOverdue: (date, today) => Boolean(date && date < today),
     useRef: (initial) => refs[refIndex++] ?? (refs[refIndex - 1] = { current: initial }),
     useState: (initial) => [initial, () => {}],
     useEffect: (fn) => effects.push(fn),

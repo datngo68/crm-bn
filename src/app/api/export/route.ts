@@ -3,6 +3,7 @@ import ExcelJS from "exceljs";
 import { createClient } from "@/lib/supabase/server";
 import type { Inquiry } from "@/lib/types";
 import { todayISO } from "@/lib/utils";
+import { followUpDateForStatus, isDueOrOverdue, isOverdue } from "@/lib/follow-up";
 
 export async function GET(req: Request) {
   const supabase = await createClient();
@@ -43,16 +44,12 @@ export async function GET(req: Request) {
   if (focus === "due") {
     list = list.filter(
       (i) =>
-        (i.status === "Pending quotation" || i.status === "Follow Up") &&
-        i.next_follow_up_date &&
-        i.next_follow_up_date <= today,
+        isDueOrOverdue(followUpDateForStatus(i.status, i), today),
     );
   } else if (focus === "overdue") {
     list = list.filter(
       (i) =>
-        (i.status === "Pending quotation" || i.status === "Follow Up") &&
-        i.next_follow_up_date &&
-        i.next_follow_up_date < today,
+        isOverdue(followUpDateForStatus(i.status, i), today),
     );
   }
 

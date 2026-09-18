@@ -4,17 +4,20 @@ import { createElement } from "react";
 import { Button } from "antd";
 import type { MessageInstance } from "antd/es/message/interface";
 import { createClient } from "@/lib/supabase/client";
+import type { InquiryStatus } from "@/lib/types";
 import { daFuPatch, formatFuDate } from "@/lib/follow-up";
 
 export type FuDateSnapshot = {
   last_follow_up_date: string | null;
-  next_follow_up_date: string | null;
+  next_follow_up_date?: string | null;
+  follow_up_date?: string | null;
 };
 
 type MarkDaFuArgs = {
   id: string;
   prev: FuDateSnapshot & { updated_at: string };
   today: string;
+  status: InquiryStatus;
   defaultFollowUpDays: number;
   message: MessageInstance;
   /** Dashboard: remove row; List: set dates in place */
@@ -31,6 +34,7 @@ export async function markDaFu({
   id,
   prev,
   today,
+  status,
   defaultFollowUpDays,
   message,
   onOptimisticApply,
@@ -39,7 +43,7 @@ export async function markDaFu({
   onUndoStart,
   onUndoEnd,
 }: MarkDaFuArgs): Promise<boolean> {
-  const patch = daFuPatch(today, defaultFollowUpDays);
+  const patch = daFuPatch(today, defaultFollowUpDays, status);
   onOptimisticApply(patch);
 
   async function save(dates: FuDateSnapshot, expectedVersion: string) {
@@ -78,7 +82,7 @@ export async function markDaFu({
     content: createElement(
       "span",
       null,
-      `Next FU = ${formatFuDate(patch.next_follow_up_date)} `,
+      `Next FU = ${formatFuDate(patch.follow_up_date ?? patch.next_follow_up_date ?? today)} `,
       createElement(
         Button,
         {
@@ -91,6 +95,7 @@ export async function markDaFu({
             const restoredVersion = await save({
               last_follow_up_date: prev.last_follow_up_date,
               next_follow_up_date: prev.next_follow_up_date,
+              follow_up_date: prev.follow_up_date,
             }, savedVersion);
             if (restoredVersion) onRevert(restoredVersion);
             onUndoEnd?.();

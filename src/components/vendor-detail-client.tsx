@@ -57,7 +57,7 @@ export function VendorDetailClient({ vendor, inquiries }: Props) {
               { title: "Incoterm", dataIndex: ["item", "incoterm"], render: (v: string | null) => v || "-" },
               { title: "Inquiry", render: (_, row) => <Link href={`/inquiries/${row.inquiry.id}`}>{row.inquiry.received_date}</Link> },
               { title: "Status", render: (_, row) => <Tag color={statusTagColor[row.inquiry.status as InquiryStatus]}>{row.inquiry.status}</Tag> },
-              { title: "Next FU", dataIndex: ["inquiry", "next_follow_up_date"], render: (v: string | null) => v ?? "-" },
+              { title: "Next FU", render: (_, row) => row.inquiry.status === "Follow Up" ? row.inquiry.follow_up_date ?? "-" : row.inquiry.next_follow_up_date ?? "-" },
             ]}
           />
         )}

@@ -33,8 +33,7 @@ export async function runReminders() {
       .select("*, vendors(id, name)")
       .is("archived_at", null)
       .in("status", ["Pending quotation", "Follow Up"])
-      .lte("next_follow_up_date", today)
-      .not("next_follow_up_date", "is", null);
+      .or(`and(status.eq.Pending quotation,next_follow_up_date.lte.${today}),and(status.eq.Follow Up,follow_up_date.lte.${today})`);
 
     for (const raw of data ?? []) {
       const i = raw as Inquiry;
@@ -66,10 +65,12 @@ export async function runReminders() {
       .in("status", ["Pending quotation", "Follow Up"]);
 
     const list = (data ?? []) as Inquiry[];
-    const overdue = list.filter(
-      (i) => i.next_follow_up_date && i.next_follow_up_date < today,
-    );
-    const dueToday = list.filter((i) => i.next_follow_up_date === today);
+    const reminderDate = (i: Inquiry) => i.status === "Follow Up" ? i.follow_up_date : i.next_follow_up_date;
+    const overdue = list.filter((i) => {
+      const date = reminderDate(i);
+      return date && date < today;
+    });
+    const dueToday = list.filter((i) => reminderDate(i) === today);
 
     const lines = [
       `<b>📋 Digest CRM Inquiry — ${today}</b>`,

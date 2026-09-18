@@ -6,7 +6,7 @@ import { App, Button, Card, Col, Empty, List, Row, Typography } from "antd";
 import { DownloadOutlined, PlusOutlined } from "@ant-design/icons";
 import type { Inquiry } from "@/lib/types";
 import { formatUsd } from "@/lib/utils";
-import { isOverdue } from "@/lib/follow-up";
+import { followUpDateForStatus, isOverdue } from "@/lib/follow-up";
 import { markDaFu } from "@/lib/mark-da-fu";
 import { PageHeader } from "@/components/page-header";
 
@@ -62,6 +62,7 @@ export function DashboardClient({
     const prev = {
       last_follow_up_date: row.last_follow_up_date,
       next_follow_up_date: row.next_follow_up_date,
+      follow_up_date: row.follow_up_date,
       updated_at: row.updated_at,
     };
     let delta = { overdue: 0, dueToday: 0 };
@@ -69,12 +70,13 @@ export function DashboardClient({
       id: row.id,
       prev,
       today,
+      status: row.status,
       defaultFollowUpDays,
       message,
       onOptimisticApply: (patch) => {
         delta = {
-          overdue: Number(isOverdue(patch.next_follow_up_date, today)) - Number(isOverdue(prev.next_follow_up_date, today)),
-          dueToday: Number(patch.next_follow_up_date === today) - Number(prev.next_follow_up_date === today),
+          overdue: Number(isOverdue(followUpDateForStatus(row.status, patch), today)) - Number(isOverdue(followUpDateForStatus(row.status, prev), today)),
+          dueToday: Number(followUpDateForStatus(row.status, patch) === today) - Number(followUpDateForStatus(row.status, prev) === today),
         };
         setFuCounts((counts) => ({ overdue: counts.overdue + delta.overdue, dueToday: counts.dueToday + delta.dueToday }));
         setItems((list) => list.filter((i) => i.id !== row.id));
@@ -83,7 +85,7 @@ export function DashboardClient({
         setFuCounts((counts) => ({ overdue: counts.overdue - delta.overdue, dueToday: counts.dueToday - delta.dueToday }));
         setItems((list) =>
           [...list.filter((i) => i.id !== row.id), { ...row, updated_at: updatedAt ?? row.updated_at }].sort((a, b) =>
-            (a.next_follow_up_date ?? "").localeCompare(b.next_follow_up_date ?? ""),
+            (followUpDateForStatus(a.status, a) ?? "").localeCompare(followUpDateForStatus(b.status, b) ?? ""),
           ),
         );
       },
@@ -138,7 +140,7 @@ export function DashboardClient({
             dataSource={items}
             split
             renderItem={(i) => {
-              const overdueRow = isOverdue(i.next_follow_up_date, today);
+              const overdueRow = isOverdue(followUpDateForStatus(i.status, i), today);
               return (
                 <List.Item
                   style={{

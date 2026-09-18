@@ -47,7 +47,9 @@ export function inquiryLink(id: string) {
 
 export function formatInquiryLine(i: Inquiry & { vendors?: { name: string } | null }) {
   const vendor = i.vendors?.name ?? "?";
-  const fu = i.follow_up_date ?? i.next_follow_up_date ?? "—";
+  const fu = i.status === "Follow Up"
+    ? i.follow_up_date ?? "-"
+    : i.next_follow_up_date ?? "-";
   return `• <b>${escapeHtml(vendor)}</b> — ${escapeHtml(i.item_name)}\n  Status: ${i.status} | FU: ${fu}\n  ${inquiryLink(i.id)}`;
 }
 

@@ -34,6 +34,7 @@ import { addDaysISO, formatUsd, todayISO } from "@/lib/utils";
 import { PageHeader } from "@/components/page-header";
 import { statusTagColor } from "@/lib/theme";
 import { markDaFu } from "@/lib/mark-da-fu";
+import { followUpDateForStatus, isDueOrOverdue, isOverdue } from "@/lib/follow-up";
 
 type Props = {
   inquiries: Inquiry[];
@@ -134,6 +135,7 @@ export function InquiryListClient({
   const createStatus = Form.useWatch("status", createForm);
 
   const today = todayISO();
+  const rowFollowUpDate = (row: Inquiry) => followUpDateForStatus(row.status, row);
 
   const filtered = useMemo(() => {
     const needle = q.trim().toLowerCase();
@@ -156,16 +158,12 @@ export function InquiryListClient({
     if (focus === "due") {
       list = list.filter(
         (i) =>
-          (i.status === "Pending quotation" || i.status === "Follow Up") &&
-          i.next_follow_up_date &&
-          i.next_follow_up_date <= today,
+          isDueOrOverdue(followUpDateForStatus(i.status, i), today),
       );
     } else if (focus === "overdue") {
       list = list.filter(
         (i) =>
-          (i.status === "Pending quotation" || i.status === "Follow Up") &&
-          i.next_follow_up_date &&
-          i.next_follow_up_date < today,
+          isOverdue(followUpDateForStatus(i.status, i), today),
       );
     }
     const sorted = [...list].sort((a, b) => {
@@ -255,7 +253,7 @@ export function InquiryListClient({
   }
 
   function canDaFu(row: Inquiry) {
-    return (row.status === "Pending quotation" || row.status === "Follow Up") && !!row.next_follow_up_date && row.next_follow_up_date <= today;
+    return isDueOrOverdue(followUpDateForStatus(row.status, row), today);
   }
 
   async function handleDaFu(id: string) {
@@ -264,11 +262,12 @@ export function InquiryListClient({
     const prev = {
       last_follow_up_date: row.last_follow_up_date,
       next_follow_up_date: row.next_follow_up_date,
+      follow_up_date: row.follow_up_date,
       updated_at: row.updated_at,
     };
     try {
       await markDaFu({
-        id, prev, today, defaultFollowUpDays, message,
+        id, prev, today, status: row.status, defaultFollowUpDays, message,
         onOptimisticApply: (dates) => updateRow(id, dates),
         onSaved: (updated_at) => updateRow(id, { updated_at }),
         onRevert: (updatedAt) => updateRow(id, { ...prev, updated_at: updatedAt ?? prev.updated_at }),
@@ -982,7 +981,7 @@ export function InquiryListClient({
                 </Typography.Text>
               ))}
               <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                {r.received_date} · FU {r.next_follow_up_date ?? "-"} ·{" "}
+                {r.received_date} · FU {rowFollowUpDate(r) ?? "-"} ·{" "}
                 {formatUsd(r.estimated_amount)}
               </Typography.Text>
               {r.status === "Cancel" && r.reason_no_order ? (
