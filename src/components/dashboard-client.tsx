@@ -21,7 +21,7 @@ type Props = {
 };
 
 const KPI_HREF: Record<string, string> = {
-  Pending: "/inquiries?status=Pending%20quotation",
+  "Pending quotation": "/inquiries?status=Pending%20quotation",
   "Quá hạn": "/inquiries?focus=overdue",
   "Hôm nay": "/inquiries?focus=due",
   "Ordered / tháng": "/inquiries?status=Ordered",
