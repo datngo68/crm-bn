@@ -28,7 +28,6 @@ export default async function InquiriesPage() {
       <InquiryListClient
         inquiries={(inquiries ?? []) as Inquiry[]}
         vendors={(vendors ?? []) as Vendor[]}
-        defaultOwner={s?.default_owner ?? ""}
         defaultFollowUpDays={s?.default_follow_up_days ?? 3}
       />
     </Suspense>
