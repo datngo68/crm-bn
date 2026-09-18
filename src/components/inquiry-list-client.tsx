@@ -575,28 +575,6 @@ export function InquiryListClient({
 
   const desktopColumns = [
     {
-      title: "Vendor",
-      width: 150,
-      fixed: isMobile ? undefined : ("left" as const),
-      render: (_: unknown, r: Inquiry) => (
-        <button
-          type="button"
-          onClick={() => openEdit(r)}
-          style={{
-            background: "none",
-            border: 0,
-            padding: 0,
-            fontWeight: 600,
-            color: "#0F172A",
-            cursor: "pointer",
-            textAlign: "left",
-          }}
-        >
-          {r.vendors?.name ?? vendorMap[r.vendor_id] ?? "-"}
-        </button>
-      ),
-    },
-    {
       title: "Item code",
       dataIndex: "item_name",
       width: 180,
@@ -1046,7 +1024,7 @@ export function InquiryListClient({
                     dataSource={group.inquiries}
                     size="middle"
                     scroll={{ x: 1200 }}
-                    pagination={{ pageSize: 10, showSizeChanger: true }}
+                    pagination={group.inquiries.length > 10 ? { pageSize: 10, showSizeChanger: true } : false}
                     components={{ body: { cell: EditableCell } }}
                     columns={desktopColumns}
                   />
