@@ -71,7 +71,7 @@ export function InquiryForm({
   const { message } = App.useApp();
   const [form] = Form.useForm<FormValues>();
   const [vendors, setVendors] = useState(initialVendors);
-  const [newVendorName, setNewVendorName] = useState("");
+  const [vendorSearch, setVendorSearch] = useState("");
   const [saving, setSaving] = useState(false);
   const status = Form.useWatch("status", form);
 
@@ -84,15 +84,19 @@ export function InquiryForm({
     }
   }, [form, status]);
 
-  async function createVendor() {
-    const name = newVendorName.trim();
-    if (!name) return;
+  async function createVendor(name: string) {
+    const normalized = name.trim();
+    if (!normalized) return;
+    const existing = vendors.find((vendor) => vendor.name.toLowerCase() === normalized.toLowerCase());
+    if (existing) {
+      form.setFieldValue("vendor_id", existing.id);
+      return;
+    }
     const supabase = createClient();
-    const { data, error } = await supabase.from("vendors").insert({ name }).select("*").single();
+    const { data, error } = await supabase.from("vendors").insert({ name: normalized }).select("*").single();
     if (error) return message.error(error.message);
     setVendors((current) => [...current, data].sort((a, b) => a.name.localeCompare(b.name)));
     form.setFieldValue("vendor_id", data.id);
-    setNewVendorName("");
   }
 
   async function onFinish(values: FormValues) {
@@ -195,12 +199,29 @@ export function InquiryForm({
           <Row gutter={[16, 0]}>
             <Col xs={24} md={12}>
               <Form.Item label="Vendor" name="vendor_id" rules={[{ required: true, message: "Chọn vendor" }]}>
-                <Select showSearch optionFilterProp="label" options={vendors.map((v) => ({ value: v.id, label: v.name }))} />
+                <Select
+                  showSearch
+                  allowClear
+                  optionFilterProp="label"
+                  searchValue={vendorSearch}
+                  onSearch={setVendorSearch}
+                  onSelect={(value) => setVendorSearch(vendors.find((v) => v.id === value)?.name ?? "")}
+                  options={[
+                    ...vendors.map((v) => ({ value: v.id, label: v.name })),
+                    ...(vendorSearch.trim() && !vendors.some((v) => v.name.toLowerCase() === vendorSearch.trim().toLowerCase())
+                      ? [{ value: `__new__${vendorSearch.trim()}`, label: `Tạo vendor mới: ${vendorSearch.trim()}` }]
+                      : []),
+                  ]}
+                  onChange={(value) => {
+                    if (typeof value === "string" && value.startsWith("__new__")) {
+                      void createVendor(value.slice("__new__".length));
+                    }
+                  }}
+                />
               </Form.Item>
-              <Space.Compact style={{ width: "100%" }}>
-                <Input placeholder="Tạo vendor mới" value={newVendorName} onChange={(e) => setNewVendorName(e.target.value)} onPressEnter={() => void createVendor()} />
-                <Button onClick={() => void createVendor()}>Thêm</Button>
-              </Space.Compact>
+              <Form.Item noStyle shouldUpdate={(prev, current) => prev.vendor_id !== current.vendor_id}>
+                {() => null}
+              </Form.Item>
             </Col>
             <Col xs={12} md={6}><Form.Item label="Ngày nhận" name="received_date" rules={[{ required: true }]}><DatePicker style={{ width: "100%" }} format="DD/MM/YYYY" /></Form.Item></Col>
             <Col xs={12} md={6}><Form.Item label="New / Existing" name="new_existing"><Select options={[{ value: "New" }, { value: "Existing" }]} /></Form.Item></Col>

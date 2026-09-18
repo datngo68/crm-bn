@@ -126,7 +126,7 @@ export function InquiryListClient({
   const [editRow, setEditRow] = useState<Inquiry | null>(null);
   const [creating, setCreating] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [newVendorName, setNewVendorName] = useState("");
+  const [vendorSearch, setVendorSearch] = useState("");
   const [editForm] = Form.useForm<QuickEdit>();
   const [createForm] = Form.useForm<QuickCreate>();
   const [quickItems, setQuickItems] = useState<{ brand?: string; rbo_code?: string; quantity?: number; price?: number; currency?: "USD" | "VND"; incoterm?: string }[]>([{ currency: "USD" }]);
@@ -329,14 +329,19 @@ export function InquiryListClient({
     });
   }
 
-  async function createVendorInline() {
-    const name = newVendorName.trim();
-    if (!name) return;
+  async function createVendorInline(name: string) {
+    const normalized = name.trim();
+    if (!normalized) return;
+    const existing = vendors.find((vendor) => vendor.name.toLowerCase() === normalized.toLowerCase());
+    if (existing) {
+      createForm.setFieldValue("vendor_id", existing.id);
+      return;
+    }
     setSaving(true);
     const supabase = createClient();
     const { data, error } = await supabase
       .from("vendors")
-      .insert({ name })
+      .insert({ name: normalized })
       .select("*")
       .single();
     setSaving(false);
@@ -346,7 +351,7 @@ export function InquiryListClient({
     }
     setVendors((v) => [...v, data].sort((a, b) => a.name.localeCompare(b.name)));
     createForm.setFieldValue("vendor_id", data.id);
-    setNewVendorName("");
+    setVendorSearch("");
     message.success("Đã thêm vendor");
   }
 
@@ -715,21 +720,22 @@ export function InquiryListClient({
           <Select
             showSearch
             optionFilterProp="label"
-            placeholder={vendors.length ? "Chọn vendor" : "Chưa có vendor — tạo bên dưới"}
-            options={vendors.map((v) => ({ value: v.id, label: v.name }))}
+            searchValue={vendorSearch}
+            onSearch={setVendorSearch}
+            placeholder={vendors.length ? "Tìm hoặc nhập vendor" : "Nhập vendor mới"}
+            options={[
+              ...vendors.map((v) => ({ value: v.id, label: v.name })),
+              ...(vendorSearch.trim() && !vendors.some((v) => v.name.toLowerCase() === vendorSearch.trim().toLowerCase())
+                ? [{ value: `__new__${vendorSearch.trim()}`, label: `Tạo vendor mới: ${vendorSearch.trim()}` }]
+                : []),
+            ]}
+            onChange={(value) => {
+              if (typeof value === "string" && value.startsWith("__new__")) {
+                void createVendorInline(value.slice("__new__".length));
+              }
+            }}
           />
         </Form.Item>
-        <Space.Compact style={{ width: "100%", marginBottom: 16 }}>
-          <Input
-            placeholder="Tạo vendor mới"
-            value={newVendorName}
-            onChange={(e) => setNewVendorName(e.target.value)}
-            onPressEnter={() => void createVendorInline()}
-          />
-          <Button loading={saving} onClick={() => void createVendorInline()}>
-            Thêm
-          </Button>
-        </Space.Compact>
         <Typography.Text strong>Các mã hàng & giá cả</Typography.Text>
         {quickItems.map((item, index) => (
           <Space key={index} direction="vertical" style={{ width: "100%", marginTop: 8, padding: 8, border: "1px solid #E2E8F0", borderRadius: 8 }}>
