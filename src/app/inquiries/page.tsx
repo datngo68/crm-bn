@@ -10,7 +10,7 @@ export default async function InquiriesPage() {
     await Promise.all([
       supabase
         .from("inquiries")
-        .select("*, vendors(id, name)")
+        .select("*, vendors(id, name), inquiry_items(*)")
         .is("archived_at", null)
         .order("created_at", { ascending: false }),
       supabase

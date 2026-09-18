@@ -6,13 +6,14 @@ import { Card, Col, Empty, Input, Row, Tag, Typography } from "antd";
 import { VendorCreate } from "@/components/vendor-create";
 import { PageHeader } from "@/components/page-header";
 import { formatUsd } from "@/lib/utils";
-import type { Vendor } from "@/lib/types";
+import type { InquiryItem, Vendor } from "@/lib/types";
 
 type Stats = {
   total: number;
   pending: number;
   ordered: number;
   amount: number;
+  items: InquiryItem[];
 };
 
 type Props = {
@@ -66,6 +67,7 @@ export function VendorListClient({ vendors, stats }: Props) {
               pending: 0,
               ordered: 0,
               amount: 0,
+              items: [],
             };
             return (
               <Col xs={24} sm={12} lg={8} key={v.id}>
@@ -96,6 +98,9 @@ export function VendorListClient({ vendors, stats }: Props) {
                       style={{ display: "block", marginTop: 10, fontSize: 12 }}
                     >
                       {s.total} inquiry · Pending {s.pending} · Ordered {s.ordered}
+                    </Typography.Text>
+                    <Typography.Text type="secondary" style={{ display: "block", marginTop: 8 }}>
+                      {s.items.length} dòng sản phẩm
                     </Typography.Text>
                     <div
                       style={{

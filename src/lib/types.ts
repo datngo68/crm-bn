@@ -1,5 +1,27 @@
-export type InquiryStatus = "Pending" | "Ordered" | "Lost" | "No Order";
+export type InquiryStatus =
+  | "Quoted"
+  | "Pending quotation"
+  | "Ordered"
+  | "1st Order Plan"
+  | "Follow Up"
+  | "Followed but No Response"
+  | "Cancel";
 export type NewExisting = "New" | "Existing";
+export type InquiryCurrency = "USD" | "VND";
+
+export type InquiryItem = {
+  id: string;
+  inquiry_id: string;
+  sort_order: number;
+  brand: string | null;
+  rbo_code: string | null;
+  quantity: number | null;
+  price: number | null;
+  currency: InquiryCurrency;
+  incoterm: string | null;
+  created_at: string;
+  updated_at: string;
+};
 
 export type Vendor = {
   id: string;
@@ -20,6 +42,9 @@ export type Inquiry = {
   brand: string | null;
   item_name: string;
   category: string | null;
+  status_reason: string | null;
+  follow_up_date: string | null;
+  inquiry_items?: InquiryItem[];
   nominated_status: string | null;
   monthly_projection: number | null;
   unit_price_usd: number | null;
@@ -63,10 +88,13 @@ export type AppSettings = {
 };
 
 export const STATUSES: InquiryStatus[] = [
-  "Pending",
+  "Quoted",
+  "Pending quotation",
   "Ordered",
-  "Lost",
-  "No Order",
+  "1st Order Plan",
+  "Follow Up",
+  "Followed but No Response",
+  "Cancel",
 ];
 
 export const NOMINATED_STATUSES = [

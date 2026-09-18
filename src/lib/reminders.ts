@@ -32,7 +32,7 @@ export async function runReminders() {
       .from("inquiries")
       .select("*, vendors(id, name)")
       .is("archived_at", null)
-      .eq("status", "Pending")
+      .in("status", ["Pending quotation", "Follow Up"])
       .lte("next_follow_up_date", today)
       .not("next_follow_up_date", "is", null);
 
@@ -63,7 +63,7 @@ export async function runReminders() {
       .from("inquiries")
       .select("*, vendors(id, name)")
       .is("archived_at", null)
-      .eq("status", "Pending");
+      .in("status", ["Pending quotation", "Follow Up"]);
 
     const list = (data ?? []) as Inquiry[];
     const overdue = list.filter(

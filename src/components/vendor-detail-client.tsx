@@ -66,8 +66,8 @@ export function VendorDetailClient({ vendor, inquiries }: Props) {
                     <span style={{ fontSize: 12, color: "#64748B" }}>
                       {i.received_date} · FU {i.next_follow_up_date ?? "-"} ·{" "}
                       {formatUsd(i.estimated_amount)}
-                      {i.status === "No Order" && i.reason_no_order
-                        ? ` · ${i.reason_no_order}`
+                      {i.status === "Cancel" && (i.status_reason || i.reason_no_order)
+                        ? ` · ${i.status_reason ?? i.reason_no_order}`
                         : ""}
                     </span>
                   }

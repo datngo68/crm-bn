@@ -39,14 +39,14 @@ function render(query) {
 function values(state) {
   return [state.q, state.status, state.vendorId, state.focus];
 }
-const firstUrl = "q=zip&status=Pending&vendor=v1&focus=due";
+const firstUrl = "q=zip&status=Pending%20quotation&vendor=v1&focus=due";
 let state = render(firstUrl);
-assert.deepEqual(values(state), ["zip", "Pending", "v1", "due"]);
+assert.deepEqual(values(state), ["zip", "Pending quotation", "v1", "due"]);
 state.setQ("instant local edit");
 assert.equal(render(firstUrl).q, "instant local edit");
 state = render("status=Ordered&focus=overdue");
 assert.deepEqual(values(state), ["", "Ordered", undefined, "overdue"]);
-assert.deepEqual(values(render(firstUrl)), ["zip", "Pending", "v1", "due"]);
+assert.deepEqual(values(render(firstUrl)), ["zip", "Pending quotation", "v1", "due"]);
 assert.deepEqual(values(render("status=invalid&focus=invalid&vendor=")), ["", undefined, undefined, undefined]);
 for (const status of exports.STATUSES) {
   assert.equal(render(new URLSearchParams({ status }).toString()).status, status);
@@ -57,7 +57,7 @@ const actions = source.slice(source.indexOf("  const activeIds = useRef"), sourc
 const actionCode = ts.transpile(`(() => { ${actions}
   return { handleDaFu, patch, lock, unlock, canDaFu, drawerDate };
 })()`, { jsx: ts.JsxEmit.ReactJSX });
-let rows = [{ id: "i1", status: "Pending", next_follow_up_date: "2026-09-06", last_follow_up_date: null, updated_at: "v0", brand: "keep" }];
+let rows = [{ id: "i1", status: "Pending quotation", next_follow_up_date: "2026-09-06", last_follow_up_date: null, updated_at: "v0", brand: "keep" }];
 const editRow = rows[0];
 const fields = { next_follow_up_date: editRow.next_follow_up_date, brand: "local draft" };
 const refs = [];

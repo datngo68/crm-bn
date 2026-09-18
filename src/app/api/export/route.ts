@@ -21,7 +21,7 @@ export async function GET(req: Request) {
 
   let query = supabase
     .from("inquiries")
-    .select("*, vendors(id, name)")
+    .select("*, vendors(id, name), inquiry_items(*)")
     .is("archived_at", null)
     .order("received_date", { ascending: false });
 
@@ -45,14 +45,14 @@ export async function GET(req: Request) {
   if (focus === "due") {
     list = list.filter(
       (i) =>
-        i.status === "Pending" &&
+        (i.status === "Pending quotation" || i.status === "Follow Up") &&
         i.next_follow_up_date &&
         i.next_follow_up_date <= today,
     );
   } else if (focus === "overdue") {
     list = list.filter(
       (i) =>
-        i.status === "Pending" &&
+        (i.status === "Pending quotation" || i.status === "Follow Up") &&
         i.next_follow_up_date &&
         i.next_follow_up_date < today,
     );
@@ -80,32 +80,47 @@ export async function GET(req: Request) {
     "Last Follow-up Date",
     "Next Follow-up Date",
     "Owner",
+    "Brand",
+    "RBO code",
+    "Quantity order/forecast",
+    "Price",
+    "Currency",
+    "Incoterm",
   ];
   ws.addRow(headers);
   ws.getRow(1).font = { bold: true };
 
   for (const i of list) {
-    ws.addRow([
-      i.received_date,
-      i.vendors?.name ?? "",
-      i.new_existing,
-      i.item_name,
-      i.brand,
-      i.item_code,
-      i.category,
-      i.nominated_status,
-      i.monthly_projection,
-      i.unit_price_usd,
-      i.estimated_amount,
-      i.quoted_date,
-      i.first_order_date_plan,
-      i.reason_no_order,
-      i.action_plan,
-      i.status,
-      i.last_follow_up_date,
-      i.next_follow_up_date,
-      i.owner,
-    ]);
+    const itemRows = i.inquiry_items?.length ? i.inquiry_items : [null];
+    for (const item of itemRows) {
+      ws.addRow([
+        i.received_date,
+        i.vendors?.name ?? "",
+        i.new_existing,
+        i.item_name,
+        item?.brand ?? i.brand,
+        item?.rbo_code ?? i.item_code,
+        i.category,
+        i.nominated_status,
+        item?.quantity ?? i.monthly_projection,
+        item?.price ?? i.unit_price_usd,
+        i.estimated_amount,
+        i.quoted_date,
+        i.first_order_date_plan,
+        i.reason_no_order ?? i.status_reason,
+        i.action_plan,
+        i.status,
+        i.last_follow_up_date,
+        i.next_follow_up_date,
+        i.owner,
+        item?.brand ?? "",
+        item?.rbo_code ?? "",
+        item?.quantity ?? "",
+        item?.price ?? "",
+        item?.currency ?? "",
+        item?.incoterm ?? "",
+      ]);
+    }
   }
 
   ws.columns.forEach((col) => {

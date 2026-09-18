@@ -144,14 +144,14 @@ export function InquiryListClient({
     if (focus === "due") {
       list = list.filter(
         (i) =>
-          i.status === "Pending" &&
+          (i.status === "Pending quotation" || i.status === "Follow Up") &&
           i.next_follow_up_date &&
           i.next_follow_up_date <= today,
       );
     } else if (focus === "overdue") {
       list = list.filter(
         (i) =>
-          i.status === "Pending" &&
+          (i.status === "Pending quotation" || i.status === "Follow Up") &&
           i.next_follow_up_date &&
           i.next_follow_up_date < today,
       );
@@ -229,7 +229,7 @@ export function InquiryListClient({
   }
 
   function canDaFu(row: Inquiry) {
-    return row.status === "Pending" && !!row.next_follow_up_date && row.next_follow_up_date <= today;
+    return (row.status === "Pending quotation" || row.status === "Follow Up") && !!row.next_follow_up_date && row.next_follow_up_date <= today;
   }
 
   async function handleDaFu(id: string) {
@@ -266,7 +266,7 @@ export function InquiryListClient({
     setCreating(true);
     createForm.setFieldsValue({
       vendor_id: vendors[0]?.id,
-      status: "Pending",
+      status: "Pending quotation",
       new_existing: "New",
       received_date: todayISO(),
       next_follow_up_date: addDaysISO(defaultFollowUpDays),
@@ -346,7 +346,7 @@ export function InquiryListClient({
           monthly_projection: values.monthly_projection ?? null,
           owner: values.owner?.trim() || null,
           reason_no_order:
-            values.status === "No Order"
+            values.status === "Cancel"
               ? values.reason_no_order?.trim() || null
               : null,
         })
@@ -382,7 +382,7 @@ export function InquiryListClient({
         brand: values.brand || null,
         item_code: values.item_code || null,
         reason_no_order:
-          values.status === "No Order"
+          values.status === "Cancel"
             ? values.reason_no_order || null
             : null,
       }, true);
@@ -707,7 +707,7 @@ export function InquiryListClient({
             />
           </Form.Item>
         </Space>
-        {createStatus === "No Order" && (
+        {createStatus === "Cancel" && (
           <Form.Item
             label="Reason for no order"
             name="reason_no_order"
@@ -795,7 +795,7 @@ export function InquiryListClient({
           <Form.Item label="Status" name="status" rules={[{ required: true }]}>
             <Select options={STATUSES.map((s) => ({ value: s, label: s }))} />
           </Form.Item>
-          {editStatus === "No Order" && (
+          {editStatus === "Cancel" && (
             <Form.Item
               label="Reason for no order"
               name="reason_no_order"
@@ -905,7 +905,7 @@ export function InquiryListClient({
                 {formatUsd(r.estimated_amount)}
                 {r.owner ? ` · ${r.owner}` : ""}
               </Typography.Text>
-              {r.status === "No Order" && r.reason_no_order ? (
+              {r.status === "Cancel" && r.reason_no_order ? (
                 <Typography.Text type="secondary" style={{ fontSize: 12, display: "block", marginTop: 4 }}>
                   Reason: {r.reason_no_order}
                 </Typography.Text>

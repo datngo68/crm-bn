@@ -19,15 +19,15 @@ export default async function DashboardPage() {
     { data: focusRows },
     { data: settings },
   ] = await Promise.all([
-    base().eq("status", "Pending"),
-    base().eq("status", "Pending").lt("next_follow_up_date", today).not("next_follow_up_date", "is", null),
-    base().eq("status", "Pending").eq("next_follow_up_date", today),
+    base().in("status", ["Pending quotation", "Follow Up"]),
+    base().in("status", ["Pending quotation", "Follow Up"]).lt("next_follow_up_date", today).not("next_follow_up_date", "is", null),
+    base().in("status", ["Pending quotation", "Follow Up"]).eq("next_follow_up_date", today),
     base().eq("status", "Ordered").gte("updated_at", monthStart),
     supabase
       .from("inquiries")
       .select("id, item_name, status, next_follow_up_date, last_follow_up_date, updated_at, estimated_amount, vendors(id, name)")
       .is("archived_at", null)
-      .eq("status", "Pending")
+      .in("status", ["Pending quotation", "Follow Up"])
       .lte("next_follow_up_date", today)
       .not("next_follow_up_date", "is", null)
       .order("next_follow_up_date", { ascending: true })

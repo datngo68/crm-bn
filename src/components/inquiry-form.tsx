@@ -1,10 +1,11 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   App,
   Button,
+  AutoComplete,
   Card,
   Col,
   DatePicker,
@@ -14,12 +15,13 @@ import {
   Row,
   Select,
   Space,
+  Table,
   Typography,
 } from "antd";
 import dayjs, { type Dayjs } from "dayjs";
 import { createClient } from "@/lib/supabase/client";
-import type { Inquiry, InquiryStatus, NewExisting, Vendor } from "@/lib/types";
-import { NOMINATED_STATUSES, STATUSES } from "@/lib/types";
+import type { Inquiry, InquiryCurrency, Vendor } from "@/lib/types";
+import { STATUSES } from "@/lib/types";
 import { addDaysISO, todayISO } from "@/lib/utils";
 
 type Props = {
@@ -30,50 +32,39 @@ type Props = {
   defaultFollowUpDays: number;
 };
 
+type ItemValue = {
+  brand?: string;
+  rbo_code?: string;
+  quantity?: number;
+  price?: number;
+  currency?: InquiryCurrency;
+  incoterm?: string;
+};
+
 type FormValues = {
   vendor_id: string;
   received_date: Dayjs;
-  new_existing: NewExisting;
-  item_code?: string;
-  brand?: string;
-  item_name: string;
-  category?: string;
-  nominated_status?: string;
-  monthly_projection?: number | null;
-  unit_price_usd?: number | null;
-  estimated_amount?: number | null;
+  new_existing: "New" | "Existing";
+  status: (typeof STATUSES)[number];
+  status_reason?: string;
   quoted_date?: Dayjs | null;
   first_order_date_plan?: Dayjs | null;
-  reason_no_order?: string;
-  action_plan?: string;
-  status: InquiryStatus;
-  last_follow_up_date?: Dayjs | null;
+  follow_up_date?: Dayjs | null;
   next_follow_up_date?: Dayjs | null;
-  owner?: string;
+  action_plan?: string;
+  items: ItemValue[];
 };
 
-function d(v?: string | null) {
-  return v ? dayjs(v) : null;
+function dateValue(value?: string | null) {
+  return value ? dayjs(value) : null;
 }
 
-const sectionTitle = (t: string, hint?: string) => (
-  <div>
-    <Typography.Text strong style={{ fontSize: 14 }}>
-      {t}
-    </Typography.Text>
-    {hint ? (
-      <Typography.Text type="secondary" style={{ display: "block", fontSize: 12, fontWeight: 400 }}>
-        {hint}
-      </Typography.Text>
-    ) : null}
-  </div>
-);
+const incoterms = ["EXW", "DTD", "FOB"];
 
 export function InquiryForm({
   vendors: initialVendors,
   inquiry,
   defaultVendorId,
-  defaultOwner,
   defaultFollowUpDays,
 }: Props) {
   const router = useRouter();
@@ -82,289 +73,169 @@ export function InquiryForm({
   const [vendors, setVendors] = useState(initialVendors);
   const [newVendorName, setNewVendorName] = useState("");
   const [saving, setSaving] = useState(false);
-  const isEdit = Boolean(inquiry);
-  const statusWatch = Form.useWatch("status", form);
-
-  const monthly = Form.useWatch("monthly_projection", form);
-  const unit = Form.useWatch("unit_price_usd", form);
-  const autoAmount = useMemo(() => {
-    if (monthly == null || unit == null) return null;
-    return +(Number(monthly) * Number(unit)).toFixed(2);
-  }, [monthly, unit]);
+  const status = Form.useWatch("status", form);
 
   async function createVendor() {
     const name = newVendorName.trim();
     if (!name) return;
     const supabase = createClient();
-    const { data, error } = await supabase
-      .from("vendors")
-      .insert({ name })
-      .select("*")
-      .single();
-    if (error) {
-      message.error(error.message);
-      return;
-    }
-    setVendors((v) => [...v, data].sort((a, b) => a.name.localeCompare(b.name)));
+    const { data, error } = await supabase.from("vendors").insert({ name }).select("*").single();
+    if (error) return message.error(error.message);
+    setVendors((current) => [...current, data].sort((a, b) => a.name.localeCompare(b.name)));
     form.setFieldValue("vendor_id", data.id);
     setNewVendorName("");
-    message.success("Đã thêm vendor");
   }
 
   async function onFinish(values: FormValues) {
+    const items = (values.items ?? []).filter(
+      (item) => item.brand || item.rbo_code || item.quantity != null || item.price != null,
+    );
+    if (!items.length) return message.error("Thêm ít nhất một dòng sản phẩm");
     setSaving(true);
     const supabase = createClient();
+    const first = items[0];
     const payload = {
       vendor_id: values.vendor_id,
       received_date: values.received_date.format("YYYY-MM-DD"),
       new_existing: values.new_existing,
-      item_code: values.item_code || null,
-      brand: values.brand || null,
-      item_name: values.item_name,
-      category: values.category || null,
-      nominated_status: values.nominated_status || null,
-      monthly_projection: values.monthly_projection ?? null,
-      unit_price_usd: values.unit_price_usd ?? null,
-      estimated_amount: values.estimated_amount ?? autoAmount ?? null,
-      quoted_date: values.quoted_date?.format("YYYY-MM-DD") ?? null,
-      first_order_date_plan:
-        values.first_order_date_plan?.format("YYYY-MM-DD") ?? null,
-      reason_no_order:
-        values.status === "No Order" ? values.reason_no_order || null : null,
-      action_plan: values.action_plan || null,
+      item_name: first.rbo_code || first.brand || "Multiple items",
+      item_code: first.rbo_code || null,
+      brand: first.brand || null,
+      monthly_projection: first.quantity ?? null,
+      unit_price_usd: first.currency === "USD" ? first.price ?? null : null,
+      estimated_amount: first.currency === "USD" && first.quantity != null && first.price != null
+        ? Number(first.quantity) * Number(first.price)
+        : null,
       status: values.status,
-      last_follow_up_date:
-        values.last_follow_up_date?.format("YYYY-MM-DD") ?? null,
-      next_follow_up_date:
-        values.next_follow_up_date?.format("YYYY-MM-DD") ?? null,
-      owner: values.owner || null,
+      status_reason: values.status_reason || null,
+      quoted_date: values.quoted_date?.format("YYYY-MM-DD") ?? null,
+      first_order_date_plan: values.first_order_date_plan?.format("YYYY-MM-DD") ?? null,
+      follow_up_date: values.follow_up_date?.format("YYYY-MM-DD") ?? null,
+      next_follow_up_date: values.next_follow_up_date?.format("YYYY-MM-DD") ?? null,
+      action_plan: values.action_plan || null,
     };
 
-    const q = isEdit
-      ? supabase.from("inquiries").update(payload).eq("id", inquiry!.id).select("id").single()
+    const query = inquiry
+      ? supabase.from("inquiries").update(payload).eq("id", inquiry.id).select("id").single()
       : supabase.from("inquiries").insert(payload).select("id").single();
+    const { data, error } = await query;
+    if (error || !data) {
+      setSaving(false);
+      return message.error(error?.message ?? "Không thể lưu inquiry");
+    }
 
-    const { data, error } = await q;
+    const inquiryId = data.id;
+    if (inquiry) {
+      const { error: deleteError } = await supabase.from("inquiry_items").delete().eq("inquiry_id", inquiryId);
+      if (deleteError) {
+        setSaving(false);
+        return message.error(deleteError.message);
+      }
+    }
+    const { error: itemError } = await supabase.from("inquiry_items").insert(
+      items.map((item, index) => ({
+        inquiry_id: inquiryId,
+        sort_order: index,
+        brand: item.brand || null,
+        rbo_code: item.rbo_code || null,
+        quantity: item.quantity ?? null,
+        price: item.price ?? null,
+        currency: item.currency ?? "USD",
+        incoterm: item.incoterm || null,
+      })),
+    );
     setSaving(false);
-    if (error) {
-      message.error(error.message);
-      return;
-    }
-    message.success(isEdit ? "Đã cập nhật" : "Đã tạo inquiry");
-    if (isEdit) {
-      router.push(`/inquiries/${data.id}`);
-    } else {
-      router.push("/inquiries");
-    }
+    if (itemError) return message.error(itemError.message);
+    message.success(inquiry ? "Đã cập nhật" : "Đã tạo inquiry");
+    router.push(inquiry ? `/inquiries/${inquiryId}` : "/inquiries");
     router.refresh();
   }
 
-  const cardStyle = { borderRadius: 10 };
+  const initialItems: ItemValue[] = inquiry?.inquiry_items?.length
+    ? inquiry.inquiry_items.map((item) => ({
+        brand: item.brand ?? undefined,
+        rbo_code: item.rbo_code ?? undefined,
+        quantity: item.quantity ?? undefined,
+        price: item.price ?? undefined,
+        currency: item.currency,
+        incoterm: item.incoterm ?? undefined,
+      }))
+    : [{ brand: inquiry?.brand ?? undefined, rbo_code: inquiry?.item_code ?? undefined, quantity: inquiry?.monthly_projection ?? undefined, price: inquiry?.unit_price_usd ?? undefined, currency: "USD" }];
 
   return (
-    <Form
+    <Form<FormValues>
       form={form}
       layout="vertical"
       onFinish={onFinish}
-      requiredMark="optional"
       initialValues={{
         vendor_id: inquiry?.vendor_id ?? defaultVendorId,
-        received_date: d(inquiry?.received_date) ?? dayjs(todayISO()),
+        received_date: dateValue(inquiry?.received_date) ?? dayjs(todayISO()),
         new_existing: inquiry?.new_existing ?? "New",
-        item_code: inquiry?.item_code ?? undefined,
-        brand: inquiry?.brand ?? undefined,
-        item_name: inquiry?.item_name ?? undefined,
-        category: inquiry?.category ?? undefined,
-        nominated_status: inquiry?.nominated_status ?? undefined,
-        monthly_projection: inquiry?.monthly_projection ?? undefined,
-        unit_price_usd: inquiry?.unit_price_usd ?? undefined,
-        estimated_amount: inquiry?.estimated_amount ?? undefined,
-        quoted_date: d(inquiry?.quoted_date),
-        first_order_date_plan: d(inquiry?.first_order_date_plan),
-        reason_no_order: inquiry?.reason_no_order ?? undefined,
+        status: inquiry?.status ?? "Pending quotation",
+        status_reason: inquiry?.status_reason ?? undefined,
+        quoted_date: dateValue(inquiry?.quoted_date),
+        first_order_date_plan: dateValue(inquiry?.first_order_date_plan),
+        follow_up_date: dateValue(inquiry?.follow_up_date),
+        next_follow_up_date: dateValue(inquiry?.next_follow_up_date) ?? dayjs(addDaysISO(defaultFollowUpDays)),
         action_plan: inquiry?.action_plan ?? undefined,
-        status: inquiry?.status ?? "Pending",
-        last_follow_up_date: d(inquiry?.last_follow_up_date),
-        next_follow_up_date:
-          d(inquiry?.next_follow_up_date) ?? dayjs(addDaysISO(defaultFollowUpDays)),
-        owner: inquiry?.owner ?? defaultOwner,
+        items: initialItems,
       }}
     >
       <Space orientation="vertical" size={16} style={{ width: "100%" }}>
-        <Card title={sectionTitle("Khách & trạng thái")} style={cardStyle}>
+        <Card title="Vendor & trạng thái">
           <Row gutter={[16, 0]}>
             <Col xs={24} md={12}>
-              <Form.Item
-                label="Vendor"
-                name="vendor_id"
-                rules={[{ required: true, message: "Chọn vendor" }]}
-              >
-                <Select
-                  showSearch
-                  optionFilterProp="label"
-                  options={vendors.map((v) => ({ value: v.id, label: v.name }))}
-                  placeholder="Chọn vendor"
-                />
+              <Form.Item label="Vendor" name="vendor_id" rules={[{ required: true, message: "Chọn vendor" }]}>
+                <Select showSearch optionFilterProp="label" options={vendors.map((v) => ({ value: v.id, label: v.name }))} />
               </Form.Item>
-              <Space.Compact style={{ width: "100%", marginTop: -8, marginBottom: 16 }}>
-                <Input
-                  placeholder="Hoặc tạo vendor mới"
-                  value={newVendorName}
-                  onChange={(e) => setNewVendorName(e.target.value)}
-                  onPressEnter={() => void createVendor()}
-                />
+              <Space.Compact style={{ width: "100%" }}>
+                <Input placeholder="Tạo vendor mới" value={newVendorName} onChange={(e) => setNewVendorName(e.target.value)} onPressEnter={() => void createVendor()} />
                 <Button onClick={() => void createVendor()}>Thêm</Button>
               </Space.Compact>
             </Col>
-            <Col xs={24} md={6}>
-              <Form.Item label="Ngày nhận" name="received_date" rules={[{ required: true }]}>
-                <DatePicker style={{ width: "100%" }} format="DD/MM/YYYY" />
-              </Form.Item>
-            </Col>
-            <Col xs={24} md={6}>
-              <Form.Item label="New / Existing" name="new_existing">
-                <Select
-                  options={[
-                    { value: "New", label: "New" },
-                    { value: "Existing", label: "Existing" },
+            <Col xs={12} md={6}><Form.Item label="Ngày nhận" name="received_date" rules={[{ required: true }]}><DatePicker style={{ width: "100%" }} format="DD/MM/YYYY" /></Form.Item></Col>
+            <Col xs={12} md={6}><Form.Item label="New / Existing" name="new_existing"><Select options={[{ value: "New" }, { value: "Existing" }]} /></Form.Item></Col>
+            <Col xs={24} md={8}><Form.Item label="Status" name="status"><Select options={STATUSES.map((value) => ({ value, label: value }))} /></Form.Item></Col>
+            {(status === "Pending quotation" || status === "Cancel") && <Col xs={24} md={16}><Form.Item label="Lý do" name="status_reason" rules={[{ required: true, message: "Nhập lý do" }]}><Input.TextArea rows={1} /></Form.Item></Col>}
+            {status === "Follow Up" && <Col xs={24} md={8}><Form.Item label="Ngày follow-up" name="follow_up_date" rules={[{ required: true, message: "Chọn ngày" }]}><DatePicker style={{ width: "100%" }} format="DD/MM/YYYY" /></Form.Item></Col>}
+          </Row>
+        </Card>
+
+        <Card title="Các mã hàng & giá cả" extra={<Typography.Text type="secondary">Thêm nhiều dòng cho cùng vendor</Typography.Text>}>
+          <Form.List name="items">
+            {(fields, { add, remove }) => (
+              <>
+                <Table
+                  size="small"
+                  pagination={false}
+                  scroll={{ x: 900 }}
+                  dataSource={fields}
+                  rowKey="key"
+                  columns={[
+                    { title: "Brand", render: (_, field) => <Form.Item name={[field.name, "brand"]} style={{ margin: 0 }}><Input /></Form.Item> },
+                    { title: "RBO code", render: (_, field) => <Form.Item name={[field.name, "rbo_code"]} style={{ margin: 0 }}><Input /></Form.Item> },
+                    { title: "Quantity order/forecast", render: (_, field) => <Form.Item name={[field.name, "quantity"]} style={{ margin: 0 }}><InputNumber min={0} style={{ width: "100%" }} /></Form.Item> },
+                    { title: "Price", render: (_, field) => <Form.Item name={[field.name, "price"]} style={{ margin: 0 }}><InputNumber min={0} style={{ width: "100%" }} /></Form.Item> },
+                    { title: "Currency", render: (_, field) => <Form.Item name={[field.name, "currency"]} style={{ margin: 0 }}><Select options={[{ value: "USD" }, { value: "VND" }]} /></Form.Item> },
+                    { title: "Incoterm", render: (_, field) => <Form.Item name={[field.name, "incoterm"]} style={{ margin: 0 }}><AutoComplete options={incoterms.map((value) => ({ value }))} /></Form.Item> },
+                    { title: "", render: (_, field) => <Button danger type="link" onClick={() => remove(field.name)}>Xóa</Button> },
                   ]}
                 />
-              </Form.Item>
-            </Col>
-            <Col xs={24} md={8}>
-              <Form.Item label="Status" name="status" rules={[{ required: true }]}>
-                <Select options={STATUSES.map((s) => ({ value: s, label: s }))} />
-              </Form.Item>
-            </Col>
-            <Col xs={24} md={8}>
-              <Form.Item label="Owner" name="owner">
-                <Input placeholder="Người phụ trách" />
-              </Form.Item>
-            </Col>
-            <Col xs={24} md={8}>
-              <Form.Item label="Nominated Status" name="nominated_status">
-                <Select
-                  allowClear
-                  options={NOMINATED_STATUSES.map((s) => ({ value: s, label: s }))}
-                />
-              </Form.Item>
-            </Col>
-            {statusWatch === "No Order" && (
-              <Col xs={24}>
-                <Form.Item
-                  label="Reason for no order"
-                  name="reason_no_order"
-                  rules={[{ required: true, message: "Nhập lý do" }]}
-                >
-                  <Input.TextArea rows={2} placeholder="Lý do không đặt hàng" />
-                </Form.Item>
-              </Col>
+                <Button type="dashed" onClick={() => add({ currency: "USD" })} style={{ marginTop: 12 }}>+ Thêm dòng</Button>
+              </>
             )}
-          </Row>
+          </Form.List>
         </Card>
 
-        <Card title={sectionTitle("Sản phẩm")} style={cardStyle}>
+        <Card title="Ngày & ghi chú">
           <Row gutter={[16, 0]}>
-            <Col xs={24} md={12}>
-              <Form.Item
-                label="Item code"
-                name="item_name"
-                rules={[{ required: true, message: "Nhập item code" }]}
-              >
-                <Input placeholder="Item code" />
-              </Form.Item>
-            </Col>
-            <Col xs={24} md={6}>
-              <Form.Item label="RBO code" name="item_code">
-                <Input />
-              </Form.Item>
-            </Col>
-            <Col xs={24} md={6}>
-              <Form.Item label="Brand" name="brand">
-                <Input />
-              </Form.Item>
-            </Col>
-            <Col xs={24} md={12}>
-              <Form.Item label="Item type" name="category">
-                <Input />
-              </Form.Item>
-            </Col>
+            <Col xs={12} md={6}><Form.Item label="Quoted date" name="quoted_date"><DatePicker style={{ width: "100%" }} format="DD/MM/YYYY" /></Form.Item></Col>
+            <Col xs={12} md={6}><Form.Item label="1st Order Plan" name="first_order_date_plan"><DatePicker style={{ width: "100%" }} format="DD/MM/YYYY" /></Form.Item></Col>
+            <Col xs={12} md={6}><Form.Item label="Next FU" name="next_follow_up_date"><DatePicker style={{ width: "100%" }} format="DD/MM/YYYY" /></Form.Item></Col>
+            <Col xs={24}><Form.Item label="Action plan" name="action_plan"><Input.TextArea rows={2} /></Form.Item></Col>
           </Row>
         </Card>
-
-        <Card
-          title={sectionTitle(
-            "Giá & kế hoạch",
-            autoAmount != null ? `Gợi ý amount: $${autoAmount}` : undefined,
-          )}
-          style={cardStyle}
-        >
-          <Row gutter={[16, 0]}>
-            <Col xs={12} md={6}>
-              <Form.Item label="Monthly qty" name="monthly_projection">
-                <InputNumber style={{ width: "100%" }} min={0} />
-              </Form.Item>
-            </Col>
-            <Col xs={12} md={6}>
-              <Form.Item label="Unit (USD)" name="unit_price_usd">
-                <InputNumber style={{ width: "100%" }} min={0} prefix="$" />
-              </Form.Item>
-            </Col>
-            <Col xs={12} md={6}>
-              <Form.Item label="Est. Amount" name="estimated_amount">
-                <InputNumber
-                  style={{ width: "100%" }}
-                  min={0}
-                  prefix="$"
-                  placeholder={autoAmount?.toString()}
-                />
-              </Form.Item>
-            </Col>
-            <Col xs={12} md={6}>
-              <Form.Item label="Quoted" name="quoted_date">
-                <DatePicker style={{ width: "100%" }} format="DD/MM/YYYY" />
-              </Form.Item>
-            </Col>
-            <Col xs={12} md={6}>
-              <Form.Item label="1st Order plan" name="first_order_date_plan">
-                <DatePicker style={{ width: "100%" }} format="DD/MM/YYYY" />
-              </Form.Item>
-            </Col>
-            <Col xs={12} md={6}>
-              <Form.Item label="Last FU" name="last_follow_up_date">
-                <DatePicker style={{ width: "100%" }} format="DD/MM/YYYY" />
-              </Form.Item>
-            </Col>
-            <Col xs={12} md={6}>
-              <Form.Item label="Next FU" name="next_follow_up_date">
-                <DatePicker style={{ width: "100%" }} format="DD/MM/YYYY" />
-              </Form.Item>
-            </Col>
-          </Row>
-        </Card>
-
-        <Card title={sectionTitle("Ghi chú theo dõi")} style={cardStyle}>
-          <Form.Item label="Action plan" name="action_plan" style={{ marginBottom: 0 }}>
-            <Input.TextArea rows={3} placeholder="Bước tiếp theo" />
-          </Form.Item>
-        </Card>
-
-        <div
-          style={{
-            position: "sticky",
-            bottom: 0,
-            zIndex: 10,
-            display: "flex",
-            gap: 8,
-            padding: "12px 0",
-            background: "linear-gradient(transparent, #F8FAFC 30%)",
-          }}
-        >
-          <Button type="primary" htmlType="submit" loading={saving}>
-            {isEdit ? "Lưu" : "Tạo inquiry"}
-          </Button>
-          <Button onClick={() => router.back()}>Hủy</Button>
-        </div>
+        <div style={{ display: "flex", gap: 8 }}><Button type="primary" htmlType="submit" loading={saving}>{inquiry ? "Lưu" : "Tạo inquiry"}</Button><Button onClick={() => router.back()}>Hủy</Button></div>
       </Space>
     </Form>
   );

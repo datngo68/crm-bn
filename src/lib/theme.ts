@@ -100,5 +100,5 @@ export const statusTagColor: Record<string, string> = {
   Pending: "processing",
   Ordered: "success",
   Lost: "error",
-  "No Order": "default",
+  "Cancel": "default",
 };

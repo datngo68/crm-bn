@@ -13,8 +13,9 @@ export default async function InquiryDetailPage({ params }: Props) {
     await Promise.all([
       supabase
         .from("inquiries")
-        .select("*, vendors(id, name)")
+        .select("*, vendors(id, name), inquiry_items(*)")
         .eq("id", id)
+        .is("archived_at", null)
         .maybeSingle(),
       supabase.from("vendors").select("*").is("archived_at", null).order("name"),
       supabase.from("app_settings").select("*").eq("id", 1).single(),
@@ -27,7 +28,7 @@ export default async function InquiryDetailPage({ params }: Props) {
   return (
     <div>
       <PageHeader
-        title={`${row.vendors?.name ?? "Inquiry"} · ${row.item_name}`}
+        title={`${row.vendors?.name ?? "Inquiry"} · ${row.item_name || "Inquiry"}`}
         description="Chỉnh sửa inquiry"
       />
       <InquiryForm

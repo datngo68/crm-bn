@@ -21,7 +21,7 @@ type Props = {
 };
 
 const KPI_HREF: Record<string, string> = {
-  Pending: "/inquiries?status=Pending",
+  Pending: "/inquiries?status=Pending%20quotation",
   "Quá hạn": "/inquiries?focus=overdue",
   "Hôm nay": "/inquiries?focus=due",
   "Ordered / tháng": "/inquiries?status=Ordered",
@@ -47,7 +47,7 @@ export function DashboardClient({
   }
 
   const stats = [
-    { label: "Pending", value: pending, hint: "Đang theo dõi" },
+    { label: "Pending quotation", value: pending, hint: "Đang theo dõi" },
     {
       label: "Quá hạn",
       value: fuCounts.overdue,
@@ -128,7 +128,7 @@ export function DashboardClient({
             description={
               <span>
                 Không có việc hôm nay ·{" "}
-                <Link href="/inquiries?status=Pending">Pending</Link>
+                <Link href="/inquiries?status=Pending%20quotation">Pending quotation</Link>
               </span>
             }
             style={{ padding: "24px 0" }}
