@@ -41,6 +41,15 @@ type Props = {
   defaultFollowUpDays: number;
 };
 
+type QuickItem = {
+  brand?: string | null;
+  rbo_code?: string | null;
+  quantity?: number | null;
+  price?: number | null;
+  currency?: "USD" | "VND";
+  incoterm?: string | null;
+};
+
 type QuickEdit = {
   status: InquiryStatus;
   next_follow_up_date: string | null;
@@ -50,6 +59,7 @@ type QuickEdit = {
   brand?: string | null;
   item_code?: string | null;
   reason_no_order?: string | null;
+  items: QuickItem[];
 };
 
 type QuickCreate = {
@@ -308,6 +318,14 @@ export function InquiryListClient({
       brand: row.brand,
       item_code: row.item_code,
       reason_no_order: row.reason_no_order,
+      items: row.inquiry_items?.map((item) => ({
+        brand: item.brand,
+        rbo_code: item.rbo_code,
+        quantity: item.quantity,
+        price: item.price,
+        currency: item.currency,
+        incoterm: item.incoterm,
+      })) ?? [{ brand: row.brand, rbo_code: row.item_code, quantity: row.monthly_projection, price: row.unit_price_usd, currency: "USD" }],
     });
   }
 
@@ -407,18 +425,46 @@ export function InquiryListClient({
     if (!editRow || !lock(editRow.id)) return;
     try {
       const values = await editForm.validateFields();
+      const items = (values.items ?? []).filter((item) => item.brand || item.rbo_code || item.quantity != null || item.price != null);
+      if (!items.length) {
+        message.error("Thêm ít nhất một dòng sản phẩm");
+        return;
+      }
+      const first = items[0];
       const ok = await patch(editRow.id, {
         status: values.status,
         next_follow_up_date: values.next_follow_up_date,
         estimated_amount: values.estimated_amount,
-        item_name: values.item_name,
-        brand: values.brand || null,
-        item_code: values.item_code || null,
+        item_name: first.rbo_code || first.brand || "Multiple items",
+        brand: first.brand || null,
+        item_code: first.rbo_code || null,
         reason_no_order:
           values.status === "Cancel"
             ? values.reason_no_order || null
             : null,
       }, true);
+      if (ok) {
+        const supabase = createClient();
+        const { error } = await supabase.from("inquiry_items").delete().eq("inquiry_id", editRow.id);
+        if (error) {
+          message.error(error.message);
+          return;
+        }
+        const { error: itemError } = await supabase.from("inquiry_items").insert(items.map((item, index) => ({
+          inquiry_id: editRow.id,
+          sort_order: index,
+          brand: item.brand || null,
+          rbo_code: item.rbo_code || null,
+          quantity: item.quantity ?? null,
+          price: item.price ?? null,
+          currency: item.currency ?? "USD",
+          incoterm: item.incoterm || null,
+        })));
+        if (itemError) {
+          message.error(itemError.message);
+          return;
+        }
+      }
       if (ok) {
         message.success("Đã lưu");
         setEditRow((current) => current?.id === editRow.id ? null : current);
@@ -798,21 +844,29 @@ export function InquiryListClient({
           <Typography.Text type="secondary" style={{ display: "block", marginBottom: 12 }}>
             {editRow.vendors?.name ?? vendorMap[editRow.vendor_id]}
           </Typography.Text>
-          <Form.Item
-            label="Item code"
-            name="item_name"
-            rules={[{ required: true, message: "Nhập item code" }]}
-          >
-            <Input />
-          </Form.Item>
-          <Space style={{ width: "100%" }} styles={{ item: { flex: 1 } }}>
-            <Form.Item label="Brand" name="brand" style={{ flex: 1 }}>
-              <Input />
-            </Form.Item>
-            <Form.Item label="RBO code" name="item_code" style={{ flex: 1 }}>
-              <Input />
-            </Form.Item>
-          </Space>
+          <Typography.Text strong>Các mã hàng & giá cả</Typography.Text>
+          <Form.List name="items">
+            {(fields, { add, remove }) => (
+              <Space direction="vertical" style={{ width: "100%" }}>
+                {fields.map((field) => (
+                  <div key={field.key} style={{ padding: 8, border: "1px solid #E2E8F0", borderRadius: 8 }}>
+                    <Space.Compact style={{ width: "100%" }}>
+                      <Form.Item name={[field.name, "brand"]} style={{ width: "50%", marginBottom: 8 }}><Input placeholder="Brand" /></Form.Item>
+                      <Form.Item name={[field.name, "rbo_code"]} style={{ width: "50%", marginBottom: 8 }}><Input placeholder="RBO code" /></Form.Item>
+                    </Space.Compact>
+                    <Space.Compact style={{ width: "100%" }}>
+                      <Form.Item name={[field.name, "quantity"]} style={{ width: "25%", marginBottom: 8 }}><InputNumber min={0} placeholder="Qty" style={{ width: "100%" }} /></Form.Item>
+                      <Form.Item name={[field.name, "price"]} style={{ width: "25%", marginBottom: 8 }}><InputNumber min={0} placeholder="Price" style={{ width: "100%" }} /></Form.Item>
+                      <Form.Item name={[field.name, "currency"]} style={{ width: "25%", marginBottom: 8 }}><Select options={[{ value: "USD" }, { value: "VND" }]} /></Form.Item>
+                      <Form.Item name={[field.name, "incoterm"]} style={{ width: "25%", marginBottom: 8 }}><Input placeholder="Incoterm" /></Form.Item>
+                    </Space.Compact>
+                    <Button type="link" danger onClick={() => remove(field.name)}>Xóa dòng</Button>
+                  </div>
+                ))}
+                <Button type="dashed" onClick={() => add({ currency: "USD" })}>+ Thêm dòng</Button>
+              </Space>
+            )}
+          </Form.List>
           <Form.Item label="Status" name="status" rules={[{ required: true }]}>
             <Select options={STATUSES.map((s) => ({ value: s, label: s }))} />
           </Form.Item>
@@ -975,7 +1029,7 @@ export function InquiryListClient({
 
 type CellProps = {
   editable?: boolean;
-  dataIndex?: keyof QuickEdit;
+  dataIndex?: Exclude<keyof QuickEdit, "items">;
   inputType?: "text" | "number" | "date" | "status";
   record?: Inquiry;
   saving?: boolean;
