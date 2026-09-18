@@ -23,7 +23,6 @@ import {
 } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import {
-  CheckCircleOutlined,
   ClockCircleOutlined,
   DownloadOutlined,
   EditOutlined,
@@ -292,11 +291,11 @@ export function InquiryListClient({
     ) : null;
   }
 
-  function openCreate() {
+  function openCreate(vendorId?: string) {
     setCreating(true);
     setQuickItems([{ currency: "USD" }]);
     createForm.setFieldsValue({
-      vendor_id: vendors[0]?.id,
+      vendor_id: vendorId ?? vendors[0]?.id,
       status: "Pending quotation",
       new_existing: "New",
       received_date: todayISO(),
@@ -905,7 +904,7 @@ export function InquiryListClient({
             <Button icon={<DownloadOutlined />} href={exportHref}>
               Export
             </Button>
-            <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
+            <Button type="primary" icon={<PlusOutlined />} onClick={() => openCreate()}>
               Inquiry mới
             </Button>
           </>
@@ -947,7 +946,7 @@ export function InquiryListClient({
             {hasFilters ? (
               <Button onClick={clearFilters}>Xóa lọc</Button>
             ) : (
-              <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
+              <Button type="primary" icon={<PlusOutlined />} onClick={() => openCreate()}>
                 Inquiry mới
               </Button>
             )}
@@ -1016,6 +1015,14 @@ export function InquiryListClient({
                     <span>{group.inquiries.length} inquiry</span>
                     <span>{itemCount} dòng sản phẩm</span>
                     {dueCount ? <Badge status="warning" text={`${dueCount} cần xử lý`} /> : <Badge status="success" text="Đang ổn" />}
+                    <Button
+                      size="small"
+                      type="text"
+                      icon={<PlusOutlined />}
+                      onClick={() => openCreate(group.inquiries[0]?.vendor_id)}
+                    >
+                      Thêm inquiry
+                    </Button>
                   </div>
                 </div>
                 <div className="inquiry-vendor-table">
