@@ -6,6 +6,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   App,
   Button,
+  Collapse,
   DatePicker,
   Drawer,
   Empty,
@@ -166,6 +167,20 @@ export function InquiryListClient({
   }, [rows, q, status, vendorId, focus, sort, today]);
 
   const hasFilters = Boolean(q || status || vendorId || focus);
+  const vendorMap = useMemo(
+    () => Object.fromEntries(vendors.map((v) => [v.id, v.name])),
+    [vendors],
+  );
+  const groupedByVendor = useMemo(() => {
+    const groups = new Map<string, { vendor: string; inquiries: Inquiry[] }>();
+    for (const row of filtered) {
+      const key = row.vendor_id;
+      const group = groups.get(key) ?? { vendor: row.vendors?.name ?? vendorMap[key] ?? "Không rõ vendor", inquiries: [] };
+      group.inquiries.push(row);
+      groups.set(key, group);
+    }
+    return [...groups.values()];
+  }, [filtered, vendorMap]);
 
   function clearFilters() {
     setQ("");
@@ -414,11 +429,6 @@ export function InquiryListClient({
       unlock(editRow.id);
     }
   }
-
-  const vendorMap = useMemo(
-    () => Object.fromEntries(vendors.map((v) => [v.id, v.name])),
-    [vendors],
-  );
 
   const exportHref = useMemo(() => {
     const p = new URLSearchParams();
@@ -905,9 +915,12 @@ export function InquiryListClient({
               </div>
               <Typography.Text style={{ display: "block", marginTop: 4, fontSize: 13 }}>
                 {r.item_name}
-                {r.brand ? ` · ${r.brand}` : ""}
-                {r.item_code ? ` · ${r.item_code}` : ""}
               </Typography.Text>
+              {(r.inquiry_items ?? []).slice(0, 3).map((item) => (
+                <Typography.Text key={item.id} type="secondary" style={{ display: "block", fontSize: 12 }}>
+                  {item.brand || "-"} · {item.rbo_code || "-"} · {item.quantity ?? "-"} · {item.price ?? "-"} {item.currency} · {item.incoterm || "-"}
+                </Typography.Text>
+              ))}
               <Typography.Text type="secondary" style={{ fontSize: 12 }}>
                 {r.received_date} · FU {r.next_follow_up_date ?? "-"} ·{" "}
                 {formatUsd(r.estimated_amount)}
@@ -925,28 +938,33 @@ export function InquiryListClient({
           ))}
         </Space>
       ) : (
-        <div
-          style={{
-            background: "#fff",
-            border: "1px solid #E2E8F0",
-            borderRadius: 10,
-            overflow: "hidden",
-          }}
-        >
-          <Table
-            rowKey="id"
-            dataSource={filtered}
-            size="middle"
-            scroll={{ x: 1200 }}
-            pagination={{
-              pageSize: 25,
-              showSizeChanger: true,
-              showTotal: (t) => `${t} records`,
-            }}
-            components={{ body: { cell: EditableCell } }}
-            columns={desktopColumns}
-          />
-        </div>
+        <Collapse
+          items={groupedByVendor.map((group) => ({
+            key: group.vendor,
+            label: (
+              <Space>
+                <Typography.Text strong>{group.vendor}</Typography.Text>
+                <Tag>{group.inquiries.length} inquiry</Tag>
+                <Typography.Text type="secondary">
+                  {group.inquiries.reduce((total, row) => total + (row.inquiry_items?.length ?? 0), 0)} dòng sản phẩm
+                </Typography.Text>
+              </Space>
+            ),
+            children: (
+              <Table
+                rowKey="id"
+                dataSource={group.inquiries}
+                size="middle"
+                scroll={{ x: 1200 }}
+                pagination={{ pageSize: 10, showSizeChanger: true }}
+                components={{ body: { cell: EditableCell } }}
+                columns={desktopColumns}
+              />
+            ),
+          }))}
+          defaultActiveKey={groupedByVendor.map((group) => group.vendor)}
+          bordered
+        />
       )}
 
       {createDrawer}
